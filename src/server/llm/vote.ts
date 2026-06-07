@@ -3,10 +3,9 @@ import type { Lens } from './lenses';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 
 /**
- * Memoized async accessor: resolves `query` via dynamic import on first call.
- * Dynamic import() is intercepted by jest.mock() in CJS transform mode (next/jest),
- * so the existing vote.test.ts mocks keep working.
- * Webpack also accepts ESM dynamic imports for externalized packages, unlike createRequire.
+ * Memoized async accessor: resolves `query` via lazy dynamic import on first call.
+ * Kept lazy so jest.mock() intercepts it in CJS transform mode (next/jest) and
+ * so the SDK stays a runtime external (not bundled by webpack).
  */
 type SdkModule = { query: (...args: unknown[]) => AsyncIterable<SDKMessage> };
 let _sdk: SdkModule | undefined;
