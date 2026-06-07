@@ -6,7 +6,6 @@ import { DISCLAIMER_HEIGHT, SURROUND_HEIGHT } from '~/utils';
 export const Landing = () => {
   return <LandingContainer>{/* Add your landing page content here */}</LandingContainer>;
 };
-
 const LandingContainer = styled('div')({
   display: 'flex',
   flexDirection: 'column',
