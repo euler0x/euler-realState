@@ -36,3 +36,6 @@ tsconfig.tsbuildinfo
 /blob-report/
 /playwright/.cache/
 .cache-synpress/
+
+# local sqlite data
+.data/
