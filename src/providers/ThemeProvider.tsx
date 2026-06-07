@@ -4,7 +4,7 @@ import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import { getConfig } from '~/config';
 
 interface StateProps {
-  children: React.ReactElement;
+  children: React.ReactNode;
 }
 
 export const ThemeProvider = ({ children }: StateProps) => {
