@@ -102,4 +102,13 @@ export default [
       },
     },
   },
+  // vote.test.ts uses jest.mock hoisting which places non-import code between imports.
+  // Disable import/order and prettier for this canonical test file (cannot be modified).
+  {
+    files: ['src/server/llm/__tests__/vote.test.ts'],
+    rules: {
+      'import/order': 'off',
+      'prettier/prettier': 'off',
+    },
+  },
 ];
