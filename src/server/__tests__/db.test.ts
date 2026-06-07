@@ -63,4 +63,23 @@ describe('search db', () => {
     expect(db.getSearch('nope')).toBeUndefined();
     expect(db.getResults('nope')).toBeUndefined();
   });
+
+  it('createSearch throws on duplicate id (ids are caller-generated uuids)', () => {
+    db.createSearch('s1', params);
+    expect(() => db.createSearch('s1', params)).toThrow();
+  });
+
+  it('saveVote upserts on retry (same lens+replica)', () => {
+    db.createSearch('s1', params);
+    const updated: Vote = { ...vote, verdicts: [{ id: 'abc', verdict: 'reject', reason: 'retry' }] };
+    db.saveVote('s1', vote);
+    db.saveVote('s1', updated);
+    expect(db.getVotes('s1')).toHaveLength(1);
+    expect(db.getVotes('s1')[0].verdicts[0].verdict).toBe('reject');
+  });
+
+  it('getPool and getVotes return empty arrays for missing search', () => {
+    expect(db.getPool('nope')).toEqual([]);
+    expect(db.getVotes('nope')).toEqual([]);
+  });
 });

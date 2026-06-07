@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import type { NormalizedListing, SearchCriteria, SearchParams, Vote } from '~/types';
+import type { NormalizedListing, SearchCriteria, SearchParams, SearchPhase, Vote } from '~/types';
 import type { ConsensusOutput } from './consensus';
 
 const SCHEMA = `
@@ -52,18 +52,28 @@ export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmueble
     for (const l of pool) insertListing.run(searchId, l.id, JSON.stringify(l));
   });
 
+  const stmtCreateSearch = db.prepare('INSERT INTO searches (id, params) VALUES (?, ?)');
+  const stmtSetStatus = db.prepare('UPDATE searches SET status = ? WHERE id = ?');
+  const stmtSaveCriteria = db.prepare('UPDATE searches SET criteria = ? WHERE id = ?');
+  const stmtGetSearch = db.prepare('SELECT * FROM searches WHERE id = ?');
+  const stmtGetPool = db.prepare('SELECT json FROM listings WHERE search_id = ?');
+  const stmtSaveVote = db.prepare('INSERT OR REPLACE INTO votes (search_id, lens, replica, json) VALUES (?, ?, ?, ?)');
+  const stmtGetVotes = db.prepare('SELECT json FROM votes WHERE search_id = ?');
+  const stmtSaveResults = db.prepare('INSERT OR REPLACE INTO results (search_id, json) VALUES (?, ?)');
+  const stmtGetResults = db.prepare('SELECT json FROM results WHERE search_id = ?');
+
   return {
     createSearch(id: string, params: SearchParams) {
-      db.prepare('INSERT INTO searches (id, params) VALUES (?, ?)').run(id, JSON.stringify(params));
+      stmtCreateSearch.run(id, JSON.stringify(params));
     },
-    setStatus(id: string, status: string) {
-      db.prepare('UPDATE searches SET status = ? WHERE id = ?').run(status, id);
+    setStatus(id: string, status: SearchPhase) {
+      stmtSetStatus.run(status, id);
     },
     saveCriteria(id: string, criteria: SearchCriteria) {
-      db.prepare('UPDATE searches SET criteria = ? WHERE id = ?').run(JSON.stringify(criteria), id);
+      stmtSaveCriteria.run(JSON.stringify(criteria), id);
     },
     getSearch(id: string): SearchRow | undefined {
-      const row = db.prepare('SELECT * FROM searches WHERE id = ?').get(id) as
+      const row = stmtGetSearch.get(id) as
         | { id: string; params: string; criteria: string | null; status: string; created_at: string }
         | undefined;
       if (!row) return undefined;
@@ -79,26 +89,21 @@ export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmueble
       savePoolTx(id, pool);
     },
     getPool(id: string): NormalizedListing[] {
-      const rows = db.prepare('SELECT json FROM listings WHERE search_id = ?').all(id) as { json: string }[];
+      const rows = stmtGetPool.all(id) as { json: string }[];
       return rows.map((r) => JSON.parse(r.json) as NormalizedListing);
     },
     saveVote(id: string, vote: Vote) {
-      db.prepare('INSERT OR REPLACE INTO votes (search_id, lens, replica, json) VALUES (?, ?, ?, ?)').run(
-        id,
-        vote.lens,
-        vote.replica,
-        JSON.stringify(vote),
-      );
+      stmtSaveVote.run(id, vote.lens, vote.replica, JSON.stringify(vote));
     },
     getVotes(id: string): Vote[] {
-      const rows = db.prepare('SELECT json FROM votes WHERE search_id = ?').all(id) as { json: string }[];
+      const rows = stmtGetVotes.all(id) as { json: string }[];
       return rows.map((r) => JSON.parse(r.json) as Vote);
     },
     saveResults(id: string, output: ConsensusOutput) {
-      db.prepare('INSERT OR REPLACE INTO results (search_id, json) VALUES (?, ?)').run(id, JSON.stringify(output));
+      stmtSaveResults.run(id, JSON.stringify(output));
     },
     getResults(id: string): ConsensusOutput | undefined {
-      const row = db.prepare('SELECT json FROM results WHERE search_id = ?').get(id) as { json: string } | undefined;
+      const row = stmtGetResults.get(id) as { json: string } | undefined;
       return row ? (JSON.parse(row.json) as ConsensusOutput) : undefined;
     },
     close() {
@@ -109,9 +114,9 @@ export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmueble
 
 export type SearchDb = ReturnType<typeof openDb>;
 
-let singleton: SearchDb | null = null;
-/** Process-wide handle for API routes. */
+/** Process-wide handle for API routes. globalThis survives Next.js dev hot-reload (module-level state does not). */
+const g = globalThis as typeof globalThis & { __inmueblesDb?: SearchDb };
 export function getDb(): SearchDb {
-  singleton ??= openDb();
-  return singleton;
+  g.__inmueblesDb ??= openDb();
+  return g.__inmueblesDb;
 }
