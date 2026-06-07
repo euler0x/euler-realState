@@ -20,6 +20,10 @@ export interface SearchDeps {
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_QUORUM_MIN = 4;
 
+// Conservative per-vote token estimate used for optimistic reservation only — actual cost
+// is reconciled after the LLM returns. This keeps the circuit breaker meaningful at concurrency>1.
+const ESTIMATED_VOTE_TOKENS = 60_000;
+
 async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
   const queue = [...items];
   const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
@@ -81,7 +85,9 @@ export async function runSearch(id: string, params: SearchParams, deps: SearchDe
     }
     db.savePool(id, pool);
 
-    // 3. VOTING (budget is a hard circuit breaker checked before each agent)
+    // 3. VOTING — circuit breaker with optimistic reservation: each in-flight vote reserves an
+    // estimate so concurrent workers respect the budget; worst-case overshoot is bounded by one
+    // vote's actual-vs-estimate delta.
     db.setStatus(id, 'voting');
     emit({ type: 'phase', phase: 'voting' });
     const jobs = lenses.flatMap((lens) =>
@@ -94,13 +100,16 @@ export async function runSearch(id: string, params: SearchParams, deps: SearchDe
         emit({ type: 'agent', lens: lens.key, replica, status: 'skipped' });
         return;
       }
+      tokensUsed += ESTIMATED_VOTE_TOKENS; // reserve so concurrent workers see the in-flight cost
       emit({ type: 'agent', lens: lens.key, replica, status: 'running' });
       try {
         const { vote, tokens } = await deps.vote({ lens, replica, criteria, pool });
-        trackTokens(tokens);
+        tokensUsed += tokens - ESTIMATED_VOTE_TOKENS; // reconcile estimate → actual
+        emit({ type: 'tokens', total: tokensUsed, budget: params.tokenBudget });
         db.saveVote(id, vote);
         emit({ type: 'agent', lens: lens.key, replica, status: 'ok' });
       } catch {
+        tokensUsed -= ESTIMATED_VOTE_TOKENS; // failed vote: release the reservation
         emit({ type: 'agent', lens: lens.key, replica, status: 'error' });
       }
     });

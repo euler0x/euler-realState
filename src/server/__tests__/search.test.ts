@@ -118,6 +118,32 @@ describe('runSearch', () => {
     expect(events.at(-1)).toMatchObject({ type: 'error' });
   });
 
+  it('respects the budget under concurrency=4 (bounded overshoot)', async () => {
+    const budget = 200_000;
+    db.createSearch('s1', { ...params, tokenBudget: budget });
+    const manyLenses: Lens[] = Array.from({ length: 8 }, (_, i) => ({ key: `lens${i}`, instruction: 'x' }));
+    let votesRun = 0;
+    const deps = makeDeps(db, events, {
+      tokenBudget: budget,
+      lenses: manyLenses,
+      concurrency: 4,
+      quorumMin: 1,
+      vote: async ({ lens, replica }) => {
+        votesRun++;
+        return {
+          vote: { lens: lens.key, replica, verdicts: [{ id: 'l1', verdict: 'match', reason: 'ok' }] },
+          tokens: 50_000,
+        };
+      },
+    });
+    // note: makeDeps spreads params for createSearch separately; ensure the run uses budget too
+    await runSearch('s1', { ...params, tokenBudget: budget }, deps);
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
+    // with reservation at 60k est and 50k actual, ~ floor(200k/ ~50k) votes run, not all 8
+    expect(votesRun).toBeLessThan(8);
+    expect(votesRun).toBeGreaterThan(0);
+  });
+
   it('a failing voting agent loses its vote but not the search', async () => {
     db.createSearch('s1', params);
     const deps = makeDeps(db, events, {
