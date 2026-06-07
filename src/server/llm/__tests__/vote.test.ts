@@ -73,7 +73,7 @@ describe('runVotingAgent', () => {
     expect(tokens).toBe(125); // input + output + cache_creation (reads are ~free)
     const opts = (mockQuery.mock.calls[0][0] as { options: Record<string, unknown> }).options;
     expect(opts.model).toBe('claude-haiku-4-5');
-    expect(opts.maxTurns).toBe(1);
+    expect(opts.maxTurns).toBe(2);
     expect(opts.allowedTools).toEqual([]);
     expect(opts.outputFormat).toMatchObject({ type: 'json_schema' });
   });

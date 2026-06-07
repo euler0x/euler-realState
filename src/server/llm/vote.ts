@@ -84,12 +84,13 @@ export interface VotingAgentArgs {
   pool: NormalizedListing[];
   model?: string;
   timeoutMs?: number;
-  /** Override max turns (default: 1). Useful for smoke runs with outputFormat: json_schema. */
+  /** Override max turns (default: 2). structured output (outputFormat) needs >1 agent turn; maxTurns:1 returns error_max_turns. */
   maxTurns?: number;
 }
 
 export async function runVotingAgent(args: VotingAgentArgs): Promise<{ vote: Vote; tokens: number }> {
-  const { lens, replica, criteria, pool, model = VOTING_MODEL, timeoutMs = AGENT_TIMEOUT_MS, maxTurns = 1 } = args;
+  // structured output (outputFormat) needs >1 agent turn; maxTurns:1 returns error_max_turns
+  const { lens, replica, criteria, pool, model = VOTING_MODEL, timeoutMs = AGENT_TIMEOUT_MS, maxTurns = 2 } = args;
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 

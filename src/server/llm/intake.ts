@@ -19,6 +19,9 @@ async function getQuery() {
 
 export const INTAKE_MODEL = 'claude-sonnet-4-6';
 
+// structured output (outputFormat) needs >1 agent turn; maxTurns:1 returns error_max_turns
+const INTAKE_MAX_TURNS = 2;
+
 const CRITERIA_SCHEMA = {
   type: 'object',
   properties: {
@@ -51,7 +54,7 @@ export async function runIntake(description: string): Promise<{ criteria: Search
     prompt: `${INTAKE_PROMPT}${description}`,
     options: {
       model: INTAKE_MODEL,
-      maxTurns: 1,
+      maxTurns: INTAKE_MAX_TURNS,
       allowedTools: [],
       outputFormat: { type: 'json_schema', schema: CRITERIA_SCHEMA as Record<string, unknown> },
     },
