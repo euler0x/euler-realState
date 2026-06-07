@@ -2,6 +2,7 @@ import { subscribeWithReplay } from '~/server/events';
 import type { SearchEvent } from '~/types';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

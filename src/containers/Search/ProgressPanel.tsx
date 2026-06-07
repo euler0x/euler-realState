@@ -1,7 +1,7 @@
 'use client';
 
 import { Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material';
-import type { AdapterEventStatus, AgentEventStatus, SearchEvent, SearchPhase } from '~/types';
+import type { AdapterEventStatus, AgentEventStatus, SearchCriteria, SearchEvent, SearchPhase } from '~/types';
 
 const PHASES: { key: SearchPhase; label: string }[] = [
   { key: 'intake', label: 'Intake' },
@@ -25,6 +25,7 @@ const ADAPTER_COLOR: Record<AdapterEventStatus, 'default' | 'info' | 'success' |
 };
 
 type PhaseEvent = { type: 'phase'; phase: SearchPhase };
+type CriteriaEvent = { type: 'criteria'; criteria: SearchCriteria };
 type AdapterEvent = { type: 'adapter'; portal: string; status: AdapterEventStatus; count?: number; detail?: string };
 type AgentEvent = { type: 'agent'; lens: string; replica: number; status: AgentEventStatus; detail?: string };
 type TokensEvent = { type: 'tokens'; total: number; budget: number };
@@ -41,6 +42,7 @@ export const ProgressPanel = ({ events }: Props) => {
   const phaseIdx = PHASES.findIndex((p) => p.key === currentPhase?.phase);
   const doneEvent = events.find((e): e is DoneEvent => e.type === 'done');
   const hasError = events.some((e) => e.type === 'error');
+  const criteriaEvent = events.find((e): e is CriteriaEvent => e.type === 'criteria');
 
   const adapters = new Map<string, { status: AdapterEventStatus; count?: number; detail?: string }>();
   const agents = new Map<string, { status: AgentEventStatus; detail?: string }>();
@@ -76,6 +78,12 @@ export const ProgressPanel = ({ events }: Props) => {
             return <Chip key={p.key} label={`${marker} ${p.label}`} color={color} size='small' />;
           })}
         </Stack>
+
+        {criteriaEvent && (
+          <Typography variant='caption' color='text.secondary' noWrap>
+            {`${criteriaEvent.criteria.operation} · ${criteriaEvent.criteria.propertyType} · ${criteriaEvent.criteria.barrios.join(', ') || 'sin zona'} · ${criteriaEvent.criteria.currency}${criteriaEvent.criteria.priceMax ? ` hasta ${criteriaEvent.criteria.priceMax.toLocaleString()}` : ''}${criteriaEvent.criteria.mustHaves.length ? ` · imprescindibles: ${criteriaEvent.criteria.mustHaves.join(', ')}` : ''}`}
+          </Typography>
+        )}
 
         {adapters.size > 0 && (
           <Stack direction='row' spacing={1} alignItems='center'>
