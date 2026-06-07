@@ -78,7 +78,7 @@ export async function runVotingAgent(args: VotingAgentArgs): Promise<{ vote: Vot
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
   try {
-    for await (const message of getQuery()({
+    for await (const rawMessage of getQuery()({
       prompt: buildVotingPrompt(criteria, pool, lens),
       options: {
         model,
@@ -88,17 +88,16 @@ export async function runVotingAgent(args: VotingAgentArgs): Promise<{ vote: Vot
         outputFormat: { type: 'json_schema', schema: VERDICTS_SCHEMA as Record<string, unknown> },
       },
     })) {
-      if (message.type === 'result') {
-        if (
-          message.subtype !== 'success' ||
-          !('structured_output' in message) ||
-          !(message as { structured_output?: unknown }).structured_output
-        ) {
-          throw new Error(`voting agent ${lens.key}#${replica} failed: ${message.subtype}`);
+      const message = rawMessage as Record<string, unknown>;
+      if (message['type'] === 'result') {
+        if (message['subtype'] !== 'success' || !('structured_output' in message) || !message['structured_output']) {
+          throw new Error(`voting agent ${lens.key}#${replica} failed: ${message['subtype']}`);
         }
-        const successMsg = message as { subtype: 'success'; structured_output?: unknown; usage: Usage };
-        const { verdicts } = successMsg.structured_output as { verdicts: LensVerdict[] };
-        return { vote: { lens: lens.key, replica, verdicts }, tokens: tokensFromUsage(successMsg.usage) };
+        const { verdicts } = message['structured_output'] as { verdicts: LensVerdict[] };
+        return {
+          vote: { lens: lens.key, replica, verdicts },
+          tokens: tokensFromUsage(message['usage'] as Usage),
+        };
       }
     }
     throw new Error(`voting agent ${lens.key}#${replica}: stream ended without result`);
