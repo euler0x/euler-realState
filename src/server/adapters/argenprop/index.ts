@@ -25,8 +25,10 @@ export const argenpropAdapter: PortalAdapter = {
   async search(criteria): Promise<AdapterResult> {
     const byId = new Map<string, NormalizedListing>();
     let blocked = false;
+    let errorCount = 0;
+    const urls = buildSearchUrls(criteria);
 
-    for (const [i, url] of buildSearchUrls(criteria).entries()) {
+    for (const [i, url] of urls.entries()) {
       const barrio = criteria.barrios[i] ?? 'Capital Federal';
       try {
         const page = await fetchPage(url);
@@ -45,9 +47,12 @@ export const argenpropAdapter: PortalAdapter = {
         }
       } catch {
         // network error / timeout on one barrio: keep going with the rest
+        errorCount++;
       }
     }
 
+    if (byId.size === 0 && !blocked && errorCount > 0 && errorCount === urls.length)
+      return { status: 'error', listings: [], detail: 'all barrio fetches failed' };
     if (byId.size === 0 && blocked) return { status: 'blocked', listings: [], detail: 'challenge o status de bloqueo' };
     return { status: 'ok', listings: [...byId.values()] };
   },

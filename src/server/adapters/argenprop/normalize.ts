@@ -5,6 +5,7 @@ export interface RawArgenpropListing {
   url: string;
   title: string;
   priceText: string;
+  expensasText: string;
   addressText: string;
   featuresText: string[];
   description: string;
@@ -44,9 +45,12 @@ export function normalizeListing(raw: RawArgenpropListing, barrio: string): Norm
     portal: 'argenprop',
     title: raw.title.trim(),
     price,
+    expensas: parsePrice(raw.expensasText)?.amount,
     barrio,
-    ambientes: extractNumber(raw.featuresText, /(\d+)\s*amb/i),
-    m2: extractNumber(raw.featuresText, /(\d+)\s*m²?/i),
+    ambientes:
+      extractNumber(raw.featuresText, /(\d+)\s*amb/i) ??
+      (raw.featuresText.some((f) => /monoambiente/i.test(f)) ? 1 : undefined),
+    m2: extractNumber(raw.featuresText, /(\d+)\s*m[²2]/i),
     features: raw.featuresText.map((f) => f.trim()).filter(Boolean),
     description: truncateWords(`${raw.addressText}. ${raw.description}`),
   };

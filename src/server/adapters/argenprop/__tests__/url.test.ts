@@ -31,4 +31,13 @@ describe('argenprop urls', () => {
       'https://www.argenprop.com/departamentos/alquiler/capital-federal',
     ]);
   });
+
+  it('maps casa and ph property types', () => {
+    expect(buildSearchUrls({ ...base, propertyType: 'casa', barrios: ['Palermo'] })).toEqual([
+      'https://www.argenprop.com/casas/alquiler/palermo',
+    ]);
+    expect(buildSearchUrls({ ...base, propertyType: 'ph', barrios: ['Palermo'] })).toEqual([
+      'https://www.argenprop.com/ph/alquiler/palermo',
+    ]);
+  });
 });
