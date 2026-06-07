@@ -1,16 +1,21 @@
-import { createRequire } from 'node:module';
 import type { LensVerdict, NormalizedListing, SearchCriteria, Vote } from '~/types';
 import type { Lens } from './lenses';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 
 /**
- * Lazy accessor: resolves `query` at call time, not at module-load time.
- * This lets jest.mock() intercept the import before vote.ts consumes it,
- * while also being compatible with native ESM (tsx, Next.js) via createRequire.
+ * Memoized async accessor: resolves `query` via dynamic import on first call.
+ * Dynamic import() is intercepted by jest.mock() in CJS transform mode (next/jest),
+ * so the existing vote.test.ts mocks keep working.
+ * Webpack also accepts ESM dynamic imports for externalized packages, unlike createRequire.
  */
-const _require = createRequire(import.meta.url);
-const getQuery = (): ((...args: unknown[]) => AsyncIterable<SDKMessage>) =>
-  (_require('@anthropic-ai/claude-agent-sdk') as { query: (...args: unknown[]) => AsyncIterable<SDKMessage> }).query;
+type SdkModule = { query: (...args: unknown[]) => AsyncIterable<SDKMessage> };
+let _sdk: SdkModule | undefined;
+async function getQuery() {
+  if (!_sdk) {
+    _sdk = (await import('@anthropic-ai/claude-agent-sdk')) as unknown as SdkModule;
+  }
+  return _sdk.query;
+}
 
 export const VOTING_MODEL = 'claude-haiku-4-5';
 const AGENT_TIMEOUT_MS = 90_000;
@@ -89,7 +94,8 @@ export async function runVotingAgent(args: VotingAgentArgs): Promise<{ vote: Vot
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
   try {
-    for await (const message of getQuery()({
+    const query = await getQuery();
+    for await (const message of query({
       prompt: buildVotingPrompt(criteria, pool, lens),
       options: {
         model,

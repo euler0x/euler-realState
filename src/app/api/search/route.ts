@@ -9,6 +9,7 @@ import { runSearch } from '~/server/search';
 import type { SearchParams } from '~/types';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const n = Number(value);
