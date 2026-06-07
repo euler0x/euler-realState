@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Stack } from '@mui/material';
 import type { ScoredListing, SearchEvent, SearchParams } from '~/types';
 import { ProgressPanel } from './ProgressPanel';
@@ -55,15 +55,20 @@ export const SearchPage = () => {
       if (event.type === 'done') {
         source.close();
         sourceRef.current = null;
-        const data = (await (await fetch(`/api/search/${id}`)).json()) as {
-          results: { results: ScoredListing[]; degraded: boolean } | null;
-        };
-        setResults({
-          results: data.results?.results ?? [],
-          degraded: data.results?.degraded ?? false,
-          partial: event.partial,
-        });
-        setPhase('done');
+        try {
+          const data = (await (await fetch(`/api/search/${id}`)).json()) as {
+            results: { results: ScoredListing[]; degraded: boolean } | null;
+          };
+          setResults({
+            results: data.results?.results ?? [],
+            degraded: data.results?.degraded ?? false,
+            partial: event.partial,
+          });
+        } catch {
+          setEvents((prev) => [...prev, { type: 'error', message: 'No se pudieron cargar los resultados finales.' }]);
+        } finally {
+          setPhase('done');
+        }
       } else if (event.type === 'error') {
         source.close();
         sourceRef.current = null;
@@ -72,9 +77,17 @@ export const SearchPage = () => {
     };
 
     source.onerror = () => {
+      if (sourceRef.current !== source) return; // already handled done/error cleanly
       source.close();
       sourceRef.current = null;
       setPhase('done');
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      sourceRef.current?.close();
+      sourceRef.current = null;
     };
   }, []);
 

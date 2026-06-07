@@ -22,7 +22,11 @@ export const ResultsList = ({ results, degraded, partial }: Props) => {
         <Paper key={r.listing.id} variant='outlined' sx={{ p: 2 }}>
           <Stack spacing={1}>
             <Stack direction='row' spacing={1} alignItems='center'>
-              <Chip size='small' color='success' label={`${r.matchedLenses}/${r.totalLenses} lentes`} />
+              <Chip
+                size='small'
+                color={r.score >= 0.8 ? 'success' : r.score >= 0.5 ? 'info' : 'warning'}
+                label={`${Math.round(r.score * 100)}% · ${r.matchedLenses}/${r.totalLenses} lentes`}
+              />
               {r.redFlag && <Chip size='small' color='warning' label='⚠ red flag' />}
               <Link href={r.listing.url} target='_blank' rel='noopener noreferrer'>
                 {r.listing.title}

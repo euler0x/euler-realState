@@ -34,9 +34,13 @@ type ErrorEvent = { type: 'error'; message: string };
 type Props = { events: SearchEvent[] };
 
 export const ProgressPanel = ({ events }: Props) => {
-  const currentPhase = [...events].reverse().find((e): e is PhaseEvent => e.type === 'phase');
+  const phaseKeys = PHASES.map((p) => p.key);
+  const currentPhase = [...events]
+    .reverse()
+    .find((e): e is PhaseEvent => e.type === 'phase' && phaseKeys.includes(e.phase));
   const phaseIdx = PHASES.findIndex((p) => p.key === currentPhase?.phase);
   const doneEvent = events.find((e): e is DoneEvent => e.type === 'done');
+  const hasError = events.some((e) => e.type === 'error');
 
   const adapters = new Map<string, { status: AdapterEventStatus; count?: number; detail?: string }>();
   const agents = new Map<string, AgentEventStatus>();
@@ -61,14 +65,16 @@ export const ProgressPanel = ({ events }: Props) => {
     <Paper variant='outlined' sx={{ p: 2, width: '100%', maxWidth: '72rem' }} data-testid='progress-panel'>
       <Stack spacing={1.5}>
         <Stack direction='row' spacing={1}>
-          {PHASES.map((p, i) => (
-            <Chip
-              key={p.key}
-              label={`${i < phaseIdx || doneEvent ? '✓' : i === phaseIdx ? '⟳' : '·'} ${p.label}`}
-              color={i < phaseIdx || doneEvent ? 'success' : i === phaseIdx ? 'info' : 'default'}
-              size='small'
-            />
-          ))}
+          {PHASES.map((p, i) => {
+            const isDone = !hasError && doneEvent;
+            const isErrorPhase = hasError && i === phaseIdx;
+            const isPast = i < phaseIdx;
+            const isCurrent = i === phaseIdx;
+            const marker = isDone || isPast ? '✓' : isErrorPhase ? '✗' : isCurrent ? '⟳' : '·';
+            const color: 'success' | 'error' | 'info' | 'default' =
+              isDone || isPast ? 'success' : isErrorPhase ? 'error' : isCurrent ? 'info' : 'default';
+            return <Chip key={p.key} label={`${marker} ${p.label}`} color={color} size='small' />;
+          })}
         </Stack>
 
         {adapters.size > 0 && (
