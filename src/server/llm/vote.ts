@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import type { LensVerdict, NormalizedListing, SearchCriteria, Vote } from '~/types';
 import type { Lens } from './lenses';
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 
 /**
  * Lazy accessor: resolves `query` at call time, not at module-load time.
@@ -8,8 +9,8 @@ import type { Lens } from './lenses';
  * while also being compatible with native ESM (tsx, Next.js) via createRequire.
  */
 const _require = createRequire(import.meta.url);
-const getQuery = (): ((...args: unknown[]) => AsyncIterable<unknown>) =>
-  (_require('@anthropic-ai/claude-agent-sdk') as { query: (...args: unknown[]) => AsyncIterable<unknown> }).query;
+const getQuery = (): ((...args: unknown[]) => AsyncIterable<SDKMessage>) =>
+  (_require('@anthropic-ai/claude-agent-sdk') as { query: (...args: unknown[]) => AsyncIterable<SDKMessage> }).query;
 
 export const VOTING_MODEL = 'claude-haiku-4-5';
 const AGENT_TIMEOUT_MS = 90_000;
@@ -47,6 +48,15 @@ export function tokensFromUsage(usage: Usage): number {
   return (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
 }
 
+/** Deterministic JSON: sorted keys so the cached prefix is byte-identical across replicas/runs. */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_k, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+}
+
 /**
  * IMPORTANT for prompt caching: the shared context (criteria + pool) goes FIRST
  * and must be byte-identical across all lenses/replicas of a search. The lens
@@ -55,8 +65,9 @@ export function tokensFromUsage(usage: Usage): number {
 export function buildVotingPrompt(criteria: SearchCriteria, pool: NormalizedListing[], lens: Lens): string {
   const shared = [
     'Sos un evaluador de avisos inmobiliarios de Buenos Aires. Vas a recibir los criterios de búsqueda del usuario y una lista de avisos candidatos en JSON.',
-    `CRITERIOS DE BÚSQUEDA:\n${JSON.stringify(criteria)}`,
-    `AVISOS CANDIDATOS:\n${JSON.stringify(pool)}`,
+    // stableStringify ensures the cache prefix is byte-identical regardless of key insertion order
+    `CRITERIOS DE BÚSQUEDA:\n${stableStringify(criteria)}`,
+    `AVISOS CANDIDATOS:\n${stableStringify(pool)}`,
   ].join('\n\n');
   return `${shared}\n\nTU LENTE DE EVALUACIÓN:\n${lens.instruction}\n\nDevolvé un veredicto por CADA candidato, usando exactamente su campo "id". verdict: "match" (cumple tu lente), "reject" (no cumple), "unsure" (falta información para juzgar — NO uses reject si simplemente falta el dato).`;
 }
@@ -78,7 +89,7 @@ export async function runVotingAgent(args: VotingAgentArgs): Promise<{ vote: Vot
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
   try {
-    for await (const rawMessage of getQuery()({
+    for await (const message of getQuery()({
       prompt: buildVotingPrompt(criteria, pool, lens),
       options: {
         model,
@@ -88,15 +99,22 @@ export async function runVotingAgent(args: VotingAgentArgs): Promise<{ vote: Vot
         outputFormat: { type: 'json_schema', schema: VERDICTS_SCHEMA as Record<string, unknown> },
       },
     })) {
-      const message = rawMessage as Record<string, unknown>;
-      if (message['type'] === 'result') {
-        if (message['subtype'] !== 'success' || !('structured_output' in message) || !message['structured_output']) {
-          throw new Error(`voting agent ${lens.key}#${replica} failed: ${message['subtype']}`);
+      if (message.type === 'result') {
+        if (message.subtype !== 'success') {
+          throw new Error(`voting agent ${lens.key}#${replica} failed: ${message.subtype}`);
         }
-        const { verdicts } = message['structured_output'] as { verdicts: LensVerdict[] };
+        // After narrowing subtype === 'success', message is SDKResultSuccess.
+        // structured_output is typed `unknown` by the SDK — single cast at extraction point.
+        if (!message.structured_output) {
+          throw new Error(`voting agent ${lens.key}#${replica} failed: ${message.subtype}`);
+        }
+        const { verdicts } = message.structured_output as { verdicts: LensVerdict[] };
+        if (!Array.isArray(verdicts)) {
+          throw new Error(`voting agent ${lens.key}#${replica}: invalid structured_output — verdicts is not an array`);
+        }
         return {
           vote: { lens: lens.key, replica, verdicts },
-          tokens: tokensFromUsage(message['usage'] as Usage),
+          tokens: tokensFromUsage(message.usage),
         };
       }
     }

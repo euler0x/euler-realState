@@ -4,11 +4,10 @@ import { expect, jest } from '@jest/globals';
 const mockQuery = jest.fn();
 jest.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
- 
 import { buildVotingPrompt, runVotingAgent, tokensFromUsage } from '../vote';
- 
+
 import { LENSES } from '../lenses';
- 
+
 import type { NormalizedListing, SearchCriteria } from '~/types';
 
 const criteria: SearchCriteria = {
@@ -86,6 +85,16 @@ describe('runVotingAgent', () => {
     await expect(runVotingAgent({ lens: LENSES[0], replica: 1, criteria, pool })).rejects.toThrow(
       /error_max_structured_output_retries/,
     );
+  });
+
+  it('throws on structured_output with missing verdicts array', async () => {
+    mockQuery.mockReturnValue(asyncGen([resultMessage({ structured_output: { verdicts: null } })]));
+    await expect(runVotingAgent({ lens: LENSES[0], replica: 1, criteria, pool })).rejects.toThrow(/not an array/);
+  });
+
+  it('throws when the stream ends without a result message', async () => {
+    mockQuery.mockReturnValue(asyncGen([{ type: 'system' }]));
+    await expect(runVotingAgent({ lens: LENSES[0], replica: 1, criteria, pool })).rejects.toThrow(/without result/);
   });
 });
 
