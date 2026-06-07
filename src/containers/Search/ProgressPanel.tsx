@@ -26,7 +26,7 @@ const ADAPTER_COLOR: Record<AdapterEventStatus, 'default' | 'info' | 'success' |
 
 type PhaseEvent = { type: 'phase'; phase: SearchPhase };
 type AdapterEvent = { type: 'adapter'; portal: string; status: AdapterEventStatus; count?: number; detail?: string };
-type AgentEvent = { type: 'agent'; lens: string; replica: number; status: AgentEventStatus };
+type AgentEvent = { type: 'agent'; lens: string; replica: number; status: AgentEventStatus; detail?: string };
 type TokensEvent = { type: 'tokens'; total: number; budget: number };
 type DoneEvent = { type: 'done'; resultCount: number; degraded: boolean; partial: boolean };
 type ErrorEvent = { type: 'error'; message: string };
@@ -43,7 +43,7 @@ export const ProgressPanel = ({ events }: Props) => {
   const hasError = events.some((e) => e.type === 'error');
 
   const adapters = new Map<string, { status: AdapterEventStatus; count?: number; detail?: string }>();
-  const agents = new Map<string, AgentEventStatus>();
+  const agents = new Map<string, { status: AgentEventStatus; detail?: string }>();
   let tokens: { total: number; budget: number } | undefined;
 
   for (const e of events) {
@@ -53,7 +53,7 @@ export const ProgressPanel = ({ events }: Props) => {
     }
     if (e.type === 'agent') {
       const age = e as AgentEvent;
-      agents.set(`${age.lens}#${age.replica}`, age.status);
+      agents.set(`${age.lens}#${age.replica}`, { status: age.status, detail: age.detail });
     }
     if (e.type === 'tokens') {
       const te = e as TokensEvent;
@@ -93,8 +93,15 @@ export const ProgressPanel = ({ events }: Props) => {
 
         {agents.size > 0 && (
           <Stack direction='row' spacing={0.5} flexWrap='wrap' useFlexGap>
-            {[...agents.entries()].map(([key, status]) => (
-              <Chip key={key} size='small' variant='outlined' color={AGENT_COLOR[status]} label={key} />
+            {[...agents.entries()].map(([key, { status, detail }]) => (
+              <Chip
+                key={key}
+                size='small'
+                variant='outlined'
+                color={AGENT_COLOR[status]}
+                label={key}
+                title={status === 'error' ? detail : undefined}
+              />
             ))}
           </Stack>
         )}

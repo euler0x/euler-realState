@@ -67,7 +67,7 @@ export type SearchEvent =
   | { type: 'phase'; phase: SearchPhase }
   | { type: 'criteria'; criteria: SearchCriteria }
   | { type: 'adapter'; portal: string; status: AdapterEventStatus; count?: number; detail?: string }
-  | { type: 'agent'; lens: string; replica: number; status: AgentEventStatus }
+  | { type: 'agent'; lens: string; replica: number; status: AgentEventStatus; detail?: string }
   | { type: 'tokens'; total: number; budget: number }
   | { type: 'done'; resultCount: number; degraded: boolean; partial: boolean }
   | { type: 'error'; message: string };

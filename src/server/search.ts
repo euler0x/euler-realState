@@ -1,5 +1,5 @@
 import type { NormalizedListing, SearchEvent, SearchParams } from '~/types';
-import { scoreListings } from './consensus';
+import { RED_FLAGS_LENS, scoreListings } from './consensus';
 import { LENSES, type Lens } from './llm/lenses';
 import type { PortalAdapter } from './adapters/types';
 import type { SearchDb } from './db';
@@ -18,7 +18,6 @@ export interface SearchDeps {
 }
 
 const DEFAULT_CONCURRENCY = 4;
-const DEFAULT_QUORUM_MIN = 4;
 
 // Conservative per-vote token estimate used for optimistic reservation only — actual cost
 // is reconciled after the LLM returns. This keeps the circuit breaker meaningful at concurrency>1.
@@ -108,18 +107,26 @@ export async function runSearch(id: string, params: SearchParams, deps: SearchDe
         emit({ type: 'tokens', total: tokensUsed, budget: params.tokenBudget });
         db.saveVote(id, vote);
         emit({ type: 'agent', lens: lens.key, replica, status: 'ok' });
-      } catch {
+      } catch (err) {
         tokensUsed -= ESTIMATED_VOTE_TOKENS; // failed vote: release the reservation
-        emit({ type: 'agent', lens: lens.key, replica, status: 'error' });
+        emit({
+          type: 'agent',
+          lens: lens.key,
+          replica,
+          status: 'error',
+          detail: err instanceof Error ? err.message : String(err),
+        });
       }
     });
 
     // 4. CONSENSUS (pure code)
     db.setStatus(id, 'consensus');
     emit({ type: 'phase', phase: 'consensus' });
+    const scoringLensCount = lenses.filter((l) => l.key !== RED_FLAGS_LENS).length;
+    const quorumMin = deps.quorumMin ?? Math.max(1, Math.ceil(scoringLensCount * 0.6));
     const output = scoreListings(pool, db.getVotes(id), {
       threshold: params.threshold,
-      quorumMin: deps.quorumMin ?? DEFAULT_QUORUM_MIN,
+      quorumMin,
     });
     db.saveResults(id, output);
     db.setStatus(id, 'done');

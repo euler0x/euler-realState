@@ -84,13 +84,13 @@ export interface VotingAgentArgs {
   pool: NormalizedListing[];
   model?: string;
   timeoutMs?: number;
-  /** Override max turns (default: 2). structured output (outputFormat) needs >1 agent turn; maxTurns:1 returns error_max_turns. */
+  /** Override max turns (default: 4). structured output over a large pool needs several agent turns; too few returns error_max_turns. */
   maxTurns?: number;
 }
 
 export async function runVotingAgent(args: VotingAgentArgs): Promise<{ vote: Vote; tokens: number }> {
-  // structured output (outputFormat) needs >1 agent turn; maxTurns:1 returns error_max_turns
-  const { lens, replica, criteria, pool, model = VOTING_MODEL, timeoutMs = AGENT_TIMEOUT_MS, maxTurns = 2 } = args;
+  // structured output over a large pool needs several agent turns; too few returns error_max_turns
+  const { lens, replica, criteria, pool, model = VOTING_MODEL, timeoutMs = AGENT_TIMEOUT_MS, maxTurns = 4 } = args;
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
