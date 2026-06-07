@@ -24,7 +24,7 @@ export interface NormalizedListing {
   m2?: number;
   features: string[];
   description: string; // truncated to ~150 words
-  publishedAt?: string;
+  publishedAt?: string; // ISO 8601, e.g. "2026-06-07T10:00:00Z"
 }
 
 export type VerdictValue = 'match' | 'reject' | 'unsure';
@@ -41,6 +41,7 @@ export interface Vote {
   verdicts: LensVerdict[];
 }
 
+/** Flattened per-listing view of a LensVerdict, tagged with its lens and replica for display. */
 export interface LensReason {
   lens: string;
   replica: number;
