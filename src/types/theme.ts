@@ -1,5 +1,4 @@
 import { PaletteOptions, Theme, ThemeOptions } from '@mui/material';
-import { Theme as RainbowTheme } from '@rainbow-me/rainbowkit';
 
 declare module '@mui/material/styles' {
   interface TypeBackground {
@@ -45,7 +44,6 @@ export interface CustomMuiTheme extends Partial<ThemeOptions> {
 
 export interface CustomThemes {
   getMui: Theme;
-  rainbow: RainbowTheme;
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system' | undefined;

@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useState } from 'react';
+import type { ReactNode } from 'react';
 
 type ContextType = {
   loading: boolean;
@@ -11,7 +12,7 @@ type ContextType = {
 };
 
 interface StateProps {
-  children: React.ReactElement;
+  children: ReactNode;
 }
 
 export const StateContext = createContext({} as ContextType);

@@ -190,6 +190,15 @@ Stack existente: Jest (unit) + Playwright (e2e).
 No se testea la calidad de juicio de los lentes; se evalúa usando la app, con los `reason`
 de cada voto como herramienta de debugging de prompts.
 
+## Limitaciones conocidas del MVP (follow-ups para Plan 2)
+
+- **Sin filtrado pre-LLM del pool por precio/ambientes/m²**: el scraper solo filtra por tipo/operación/barrio; el resto lo evalúan los lentes. Infla el pool y el costo de tokens. Follow-up: aplicar filtros estructurales antes de votar.
+- **maxTurns=4 puede quedar corto para pools grandes**: un agente emite un veredicto por listing en una sola respuesta estructurada, con timeout de 90s. Mitigación pendiente: chunking del pool por agente (votar en lotes de ~20). El sistema degrada de forma visible (lente cae → quórum marca "degradado"), no en silencio.
+- **Importer lazy del Agent SDK duplicado en vote.ts e intake.ts**: extraer a `src/server/llm/sdk.ts` (cuidado con los mocks de jest).
+- **Canal SSE en memoria (globalThis, cap 50 búsquedas)**: correcto para app local single-user; no es multi-instancia.
+- **Dedup de listings solo por URL canónica (sha1)**: cuando se sumen más portales, dedup por contenido (dirección+m2+precio) como dice el spec.
+- **ProgressPanel usa if-chains con casts en vez de un switch exhaustivo sobre SearchEvent**: agregar guard de exhaustividad.
+
 ## Fuera de alcance (v1)
 
 - Monitoreo continuo / cron de búsquedas guardadas (el diseño no lo impide: el cache

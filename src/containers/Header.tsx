@@ -4,7 +4,6 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import { IconButton, Typography } from '@mui/material';
 import { styled, useColorScheme } from '@mui/material/styles';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { zIndex, HEADER_HEIGHT } from '~/utils';
 
 export const Header = () => {
@@ -16,9 +15,8 @@ export const Header = () => {
 
   return (
     <StyledHeader>
-      <Typography data-testid='boilerplate-title'>Next.js Boilerplate</Typography>
+      <Typography data-testid='app-title'>euler-inmuebles</Typography>
       <SIconButton onClick={changeTheme}>{mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}</SIconButton>
-      <ConnectButton />
     </StyledHeader>
   );
 };
