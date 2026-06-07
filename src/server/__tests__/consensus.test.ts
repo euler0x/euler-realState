@@ -55,6 +55,8 @@ describe('scoreListings', () => {
     ];
     const { results } = scoreListings(pool, votes, OPTS);
     expect(results[0].score).toBe(0.5); // 1 of 2 lenses
+    expect(results[0].matchedLenses).toBe(1);
+    expect(results[0].totalLenses).toBe(2);
   });
 
   it('ignores unsure replicas when computing majority', () => {
@@ -86,6 +88,21 @@ describe('scoreListings', () => {
     const votes = [vote('precio', 1, [['a', 'match']])];
     const { degraded } = scoreListings(pool, votes, { threshold: 0.5, quorumMin: 4 });
     expect(degraded).toBe(true);
+  });
+
+  it('a lens that never saw a listing does not count toward its total', () => {
+    const pool = [listing('a'), listing('b')];
+    const votes = [
+      vote('precio', 1, [
+        ['a', 'match'],
+        ['b', 'match'],
+      ]),
+      vote('espacio', 1, [['a', 'match']]), // espacio never saw 'b'
+    ];
+    const { results } = scoreListings(pool, votes, OPTS);
+    const b = results.find((r) => r.listing.id === 'b');
+    expect(b?.totalLenses).toBe(1); // only precio voted on b
+    expect(b?.score).toBe(1); // absent lens = no signal, not a penalty
   });
 
   it('sorts results by score descending and keeps reasons', () => {
