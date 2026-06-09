@@ -4,7 +4,6 @@ import { expect, jest } from '@jest/globals';
 const mockQuery = jest.fn();
 jest.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
- 
 import { runIntake } from '../intake';
 
 function asyncGen(messages: unknown[]) {

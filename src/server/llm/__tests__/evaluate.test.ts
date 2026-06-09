@@ -4,11 +4,10 @@ import { expect, jest } from '@jest/globals';
 const mockQuery = jest.fn();
 jest.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: mockQuery }));
 
- 
 import { buildEvaluatePrompt, runEvaluator, EVALUATE_MODEL } from '../evaluate';
- 
+
 import type { NormalizedListing, Requirement } from '~/types';
- 
+
 import { RED_FLAGS_ID } from '~/types';
 
 const listing: NormalizedListing = {
