@@ -1,9 +1,9 @@
 /** @jest-environment node */
 import { expect } from '@jest/globals';
-import type { NormalizedListing, SearchParams, Vote } from '~/types';
+import type { Evaluation, NormalizedListing, SearchOutput, SearchParams } from '~/types';
 import { openDb, type SearchDb } from '../db';
 
-const params: SearchParams = { description: 'depto en Palermo', replicas: 1, threshold: 0.6, tokenBudget: 100_000 };
+const params: SearchParams = { description: 'depto en Palermo', replicas: 1, tokenBudget: 100_000 };
 
 const listing: NormalizedListing = {
   id: 'abc',
@@ -14,9 +14,14 @@ const listing: NormalizedListing = {
   barrio: 'Palermo',
   features: ['balcón'],
   description: 'lindo',
+  dataSource: 'card',
 };
 
-const vote: Vote = { lens: 'precio', replica: 1, verdicts: [{ id: 'abc', verdict: 'match', reason: 'ok' }] };
+const evaluation: Evaluation = {
+  listingId: 'abc',
+  replica: 1,
+  verdicts: [{ requirementId: 'r1', verdict: 'met', evidence: 'x' }],
+};
 
 describe('search db', () => {
   let db: SearchDb;
@@ -28,28 +33,29 @@ describe('search db', () => {
   it('creates and reads a search with status transitions', () => {
     db.createSearch('s1', params);
     expect(db.getSearch('s1')).toMatchObject({ id: 's1', status: 'pending', params });
-    db.setStatus('s1', 'voting');
-    expect(db.getSearch('s1')?.status).toBe('voting');
+    db.setStatus('s1', 'textual_eval');
+    expect(db.getSearch('s1')?.status).toBe('textual_eval');
   });
 
-  it('persists criteria, pool, votes and results', () => {
+  it('persists criteria, pool, evaluations and results', () => {
     db.createSearch('s1', params);
     db.saveCriteria('s1', {
       operation: 'alquiler',
       propertyType: 'departamento',
       barrios: ['Palermo'],
       currency: 'ARS',
-      mustHaves: [],
-      niceToHaves: [],
+      requirements: [],
       rawDescription: 'depto en Palermo',
     });
     db.savePool('s1', [listing]);
-    db.saveVote('s1', vote);
-    db.saveResults('s1', { results: [], degraded: false });
+    db.saveEvaluation('s1', evaluation);
+
+    const output: SearchOutput = { survivors: [], exclusions: [], unevaluable: [], degraded: false };
+    db.saveResults('s1', output);
 
     expect(db.getPool('s1')).toEqual([listing]);
-    expect(db.getVotes('s1')).toEqual([vote]);
-    expect(db.getResults('s1')).toEqual({ results: [], degraded: false });
+    expect(db.getEvaluations('s1')).toEqual([evaluation]);
+    expect(db.getResults('s1')).toEqual(output);
   });
 
   it('savePool is idempotent per (search, listing)', () => {
@@ -69,17 +75,20 @@ describe('search db', () => {
     expect(() => db.createSearch('s1', params)).toThrow();
   });
 
-  it('saveVote upserts on retry (same lens+replica)', () => {
+  it('saveEvaluation upserts on retry (same listing_id + replica)', () => {
     db.createSearch('s1', params);
-    const updated: Vote = { ...vote, verdicts: [{ id: 'abc', verdict: 'reject', reason: 'retry' }] };
-    db.saveVote('s1', vote);
-    db.saveVote('s1', updated);
-    expect(db.getVotes('s1')).toHaveLength(1);
-    expect(db.getVotes('s1')[0].verdicts[0].verdict).toBe('reject');
+    const updated: Evaluation = {
+      ...evaluation,
+      verdicts: [{ requirementId: 'r1', verdict: 'not_met', evidence: null }],
+    };
+    db.saveEvaluation('s1', evaluation);
+    db.saveEvaluation('s1', updated);
+    expect(db.getEvaluations('s1')).toHaveLength(1);
+    expect(db.getEvaluations('s1')[0].verdicts[0].verdict).toBe('not_met');
   });
 
-  it('getPool and getVotes return empty arrays for missing search', () => {
+  it('getPool and getEvaluations return empty arrays for missing search', () => {
     expect(db.getPool('nope')).toEqual([]);
-    expect(db.getVotes('nope')).toEqual([]);
+    expect(db.getEvaluations('nope')).toEqual([]);
   });
 });

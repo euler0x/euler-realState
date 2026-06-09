@@ -1,41 +1,40 @@
-import type { NormalizedListing, SearchEvent, SearchParams } from '~/types';
-import { RED_FLAGS_LENS, scoreListings } from './consensus';
-import { LENSES, type Lens } from './llm/lenses';
+import {
+  type Evaluation,
+  type NormalizedListing,
+  type SearchCriteria,
+  type SearchEvent,
+  type SearchParams,
+} from '~/types';
+import { applyNumericGates } from './gates';
+import { rankResults, type GatedListing } from './ranking';
 import type { PortalAdapter } from './adapters/types';
 import type { SearchDb } from './db';
+import type { runEvaluator } from './llm/evaluate';
 import type { runIntake } from './llm/intake';
-import type { runVotingAgent } from './llm/vote';
 
 export interface SearchDeps {
   db: SearchDb;
   adapters: PortalAdapter[];
   intake: typeof runIntake;
-  vote: typeof runVotingAgent;
+  evaluate: typeof runEvaluator;
   emit: (e: SearchEvent) => void;
-  lenses?: Lens[];
   concurrency?: number;
-  quorumMin?: number;
 }
 
 const DEFAULT_CONCURRENCY = 4;
-
-// Conservative per-vote token estimate used for optimistic reservation only — actual cost
-// is reconciled after the LLM returns. This keeps the circuit breaker meaningful at concurrency>1.
-const ESTIMATED_VOTE_TOKENS = 60_000;
+const ESTIMATED_EVAL_TOKENS = 40_000;
 
 async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
   const queue = [...items];
-  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
-    for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
-      await fn(item);
-    }
-  });
-  await Promise.all(workers);
+  await Promise.all(
+    Array.from({ length: Math.min(limit, queue.length) }, async () => {
+      for (let item = queue.shift(); item !== undefined; item = queue.shift()) await fn(item);
+    }),
+  );
 }
 
 export async function runSearch(id: string, params: SearchParams, deps: SearchDeps): Promise<void> {
   const { db, emit } = deps;
-  const lenses = deps.lenses ?? LENSES;
   let tokensUsed = 0;
   const trackTokens = (n: number) => {
     tokensUsed += n;
@@ -43,15 +42,19 @@ export async function runSearch(id: string, params: SearchParams, deps: SearchDe
   };
 
   try {
-    // 1. INTAKE
     db.setStatus(id, 'intake');
     emit({ type: 'phase', phase: 'intake' });
-    const { criteria, tokens: intakeTokens } = await deps.intake(params.description);
-    trackTokens(intakeTokens);
+    let criteria: SearchCriteria;
+    if (params.criteria) {
+      criteria = params.criteria;
+    } else {
+      const r = await deps.intake(params.description);
+      criteria = r.criteria;
+      trackTokens(r.tokens);
+    }
     db.saveCriteria(id, criteria);
     emit({ type: 'criteria', criteria });
 
-    // 2. ACQUISITION (adapters are isolated: one failing doesn't kill the search)
     db.setStatus(id, 'acquisition');
     emit({ type: 'phase', phase: 'acquisition' });
     const byId = new Map<string, NormalizedListing>();
@@ -84,53 +87,60 @@ export async function runSearch(id: string, params: SearchParams, deps: SearchDe
     }
     db.savePool(id, pool);
 
-    // 3. VOTING — circuit breaker with optimistic reservation: each in-flight vote reserves an
-    // estimate so concurrent workers respect the budget; worst-case overshoot is bounded by one
-    // vote's actual-vs-estimate delta.
-    db.setStatus(id, 'voting');
-    emit({ type: 'phase', phase: 'voting' });
-    const jobs = lenses.flatMap((lens) =>
-      Array.from({ length: params.replicas }, (_, i) => ({ lens, replica: i + 1 })),
-    );
-    let partial = false;
-    await mapWithConcurrency(jobs, deps.concurrency ?? DEFAULT_CONCURRENCY, async ({ lens, replica }) => {
-      if (tokensUsed >= params.tokenBudget) {
-        partial = true;
-        emit({ type: 'agent', lens: lens.key, replica, status: 'skipped' });
-        return;
-      }
-      tokensUsed += ESTIMATED_VOTE_TOKENS; // reserve so concurrent workers see the in-flight cost
-      emit({ type: 'agent', lens: lens.key, replica, status: 'running' });
-      try {
-        const { vote, tokens } = await deps.vote({ lens, replica, criteria, pool });
-        tokensUsed += tokens - ESTIMATED_VOTE_TOKENS; // reconcile estimate → actual
-        emit({ type: 'tokens', total: tokensUsed, budget: params.tokenBudget });
-        db.saveVote(id, vote);
-        emit({ type: 'agent', lens: lens.key, replica, status: 'ok' });
-      } catch (err) {
-        tokensUsed -= ESTIMATED_VOTE_TOKENS; // failed vote: release the reservation
-        emit({
-          type: 'agent',
-          lens: lens.key,
-          replica,
-          status: 'error',
-          detail: err instanceof Error ? err.message : String(err),
-        });
-      }
+    db.setStatus(id, 'numeric_gate');
+    emit({ type: 'phase', phase: 'numeric_gate' });
+    const gated: GatedListing[] = pool.map((listing) => {
+      const g = applyNumericGates(listing, criteria.requirements);
+      return { listing, numericVerdicts: g.verdicts, failReason: g.passed ? undefined : g.failReason };
     });
+    const survivorsOfGate = gated.filter((g) => !g.failReason);
+    emit({ type: 'gate', survived: survivorsOfGate.length, total: pool.length });
 
-    // 4. CONSENSUS (pure code)
-    db.setStatus(id, 'consensus');
-    emit({ type: 'phase', phase: 'consensus' });
-    const scoringLensCount = lenses.filter((l) => l.key !== RED_FLAGS_LENS).length;
-    const quorumMin = deps.quorumMin ?? Math.max(1, Math.ceil(scoringLensCount * 0.6));
-    const output = scoreListings(pool, db.getVotes(id), {
-      threshold: params.threshold,
-      quorumMin,
-    });
+    db.setStatus(id, 'textual_eval');
+    emit({ type: 'phase', phase: 'textual_eval' });
+    const hasTextual = criteria.requirements.some((r) => r.kind === 'textual');
+    if (hasTextual && survivorsOfGate.length > 0) {
+      const jobs = survivorsOfGate.flatMap((g) =>
+        Array.from({ length: params.replicas }, (_, i) => ({ listing: g.listing, replica: i + 1 })),
+      );
+      await mapWithConcurrency(jobs, deps.concurrency ?? DEFAULT_CONCURRENCY, async ({ listing, replica }) => {
+        if (tokensUsed >= params.tokenBudget) {
+          emit({ type: 'eval', listingId: listing.id, replica, status: 'skipped' });
+          return;
+        }
+        tokensUsed += ESTIMATED_EVAL_TOKENS;
+        emit({ type: 'eval', listingId: listing.id, replica, status: 'running' });
+        try {
+          const { evaluation, tokens } = await deps.evaluate({ listing, requirements: criteria.requirements, replica });
+          tokensUsed += tokens - ESTIMATED_EVAL_TOKENS;
+          emit({ type: 'tokens', total: tokensUsed, budget: params.tokenBudget });
+          db.saveEvaluation(id, evaluation);
+          emit({ type: 'eval', listingId: listing.id, replica, status: 'ok' });
+        } catch (err) {
+          tokensUsed -= ESTIMATED_EVAL_TOKENS;
+          emit({
+            type: 'eval',
+            listingId: listing.id,
+            replica,
+            status: 'error',
+            detail: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    }
+
+    db.setStatus(id, 'ranking');
+    emit({ type: 'phase', phase: 'ranking' });
+    const evaluations: Evaluation[] = db.getEvaluations(id);
+    const output = rankResults(gated, evaluations, criteria.requirements, { replicas: params.replicas });
     db.saveResults(id, output);
     db.setStatus(id, 'done');
-    emit({ type: 'done', resultCount: output.results.length, degraded: output.degraded, partial });
+    emit({
+      type: 'done',
+      resultCount: output.survivors.length,
+      degraded: output.degraded,
+      partial: tokensUsed >= params.tokenBudget,
+    });
   } catch (err) {
     db.setStatus(id, 'error');
     emit({ type: 'error', message: err instanceof Error ? err.message : 'unknown error' });
