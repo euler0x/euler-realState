@@ -6,8 +6,9 @@ import type { AdapterEventStatus, AgentEventStatus, SearchCriteria, SearchEvent,
 const PHASES: { key: SearchPhase; label: string }[] = [
   { key: 'intake', label: 'Intake' },
   { key: 'acquisition', label: 'Adquisición' },
-  { key: 'voting', label: 'Votación' },
-  { key: 'consensus', label: 'Consenso' },
+  { key: 'numeric_gate', label: 'Gate numérico' },
+  { key: 'textual_eval', label: 'Evaluación' },
+  { key: 'ranking', label: 'Ranking' },
 ];
 
 const AGENT_COLOR: Record<AgentEventStatus, 'default' | 'info' | 'success' | 'error' | 'warning'> = {
@@ -27,7 +28,9 @@ const ADAPTER_COLOR: Record<AdapterEventStatus, 'default' | 'info' | 'success' |
 type PhaseEvent = { type: 'phase'; phase: SearchPhase };
 type CriteriaEvent = { type: 'criteria'; criteria: SearchCriteria };
 type AdapterEvent = { type: 'adapter'; portal: string; status: AdapterEventStatus; count?: number; detail?: string };
-type AgentEvent = { type: 'agent'; lens: string; replica: number; status: AgentEventStatus; detail?: string };
+type EvalEvent = { type: 'eval'; listingId: string; replica: number; status: AgentEventStatus; detail?: string };
+type DetailEvent = { type: 'detail'; fetched: number; total: number };
+type GateEvent = { type: 'gate'; survived: number; total: number };
 type TokensEvent = { type: 'tokens'; total: number; budget: number };
 type DoneEvent = { type: 'done'; resultCount: number; degraded: boolean; partial: boolean };
 type ErrorEvent = { type: 'error'; message: string };
@@ -45,21 +48,31 @@ export const ProgressPanel = ({ events }: Props) => {
   const criteriaEvent = events.find((e): e is CriteriaEvent => e.type === 'criteria');
 
   const adapters = new Map<string, { status: AdapterEventStatus; count?: number; detail?: string }>();
-  const agents = new Map<string, { status: AgentEventStatus; detail?: string }>();
+  const evals = new Map<string, { status: AgentEventStatus; detail?: string }>();
   let tokens: { total: number; budget: number } | undefined;
+  let gateResult: { survived: number; total: number } | undefined;
+  let detailProgress: { fetched: number; total: number } | undefined;
 
   for (const e of events) {
     if (e.type === 'adapter') {
       const ae = e as AdapterEvent;
       adapters.set(ae.portal, { status: ae.status, count: ae.count, detail: ae.detail });
     }
-    if (e.type === 'agent') {
-      const age = e as AgentEvent;
-      agents.set(`${age.lens}#${age.replica}`, { status: age.status, detail: age.detail });
+    if (e.type === 'eval') {
+      const ee = e as EvalEvent;
+      evals.set(`${ee.listingId}#${ee.replica}`, { status: ee.status, detail: ee.detail });
     }
     if (e.type === 'tokens') {
       const te = e as TokensEvent;
       tokens = { total: te.total, budget: te.budget };
+    }
+    if (e.type === 'gate') {
+      const ge = e as GateEvent;
+      gateResult = { survived: ge.survived, total: ge.total };
+    }
+    if (e.type === 'detail') {
+      const de = e as DetailEvent;
+      detailProgress = { fetched: de.fetched, total: de.total };
     }
   }
 
@@ -81,7 +94,10 @@ export const ProgressPanel = ({ events }: Props) => {
 
         {criteriaEvent && (
           <Typography variant='caption' color='text.secondary' noWrap>
-            {`${criteriaEvent.criteria.operation} · ${criteriaEvent.criteria.propertyType} · ${criteriaEvent.criteria.barrios.join(', ') || 'sin zona'} · ${criteriaEvent.criteria.currency}${criteriaEvent.criteria.priceMax ? ` hasta ${criteriaEvent.criteria.priceMax.toLocaleString()}` : ''}${criteriaEvent.criteria.mustHaves.length ? ` · imprescindibles: ${criteriaEvent.criteria.mustHaves.join(', ')}` : ''}`}
+            {`${criteriaEvent.criteria.operation} · ${criteriaEvent.criteria.propertyType} · ${criteriaEvent.criteria.barrios.join(', ') || 'sin zona'} · ${criteriaEvent.criteria.currency}${criteriaEvent.criteria.requirements
+              .filter((r) => r.kind === 'numeric')
+              .map((r) => ` ${r.label}`)
+              .join('')}`}
           </Typography>
         )}
 
@@ -99,15 +115,27 @@ export const ProgressPanel = ({ events }: Props) => {
           </Stack>
         )}
 
-        {agents.size > 0 && (
+        {detailProgress && (
+          <Typography variant='caption' color='text.secondary'>
+            Detalle: {detailProgress.fetched}/{detailProgress.total} páginas
+          </Typography>
+        )}
+
+        {gateResult && (
+          <Typography variant='caption' color='text.secondary'>
+            Gate numérico: {gateResult.survived}/{gateResult.total} pasaron
+          </Typography>
+        )}
+
+        {evals.size > 0 && (
           <Stack direction='row' spacing={0.5} flexWrap='wrap' useFlexGap>
-            {[...agents.entries()].map(([key, { status, detail }]) => (
+            {[...evals.entries()].map(([key, { status, detail }]) => (
               <Chip
                 key={key}
                 size='small'
                 variant='outlined'
                 color={AGENT_COLOR[status]}
-                label={key}
+                label={`${key.substring(0, 8)}… r${key.split('#')[1] ?? ''}`}
                 title={status === 'error' ? detail : undefined}
               />
             ))}

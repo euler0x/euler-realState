@@ -1,8 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import type { NormalizedListing, SearchCriteria, SearchParams, SearchPhase, Vote } from '~/types';
-import type { ConsensusOutput } from './consensus';
+import type { Evaluation, NormalizedListing, SearchCriteria, SearchOutput, SearchParams, SearchPhase } from '~/types';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS searches (
@@ -18,12 +17,12 @@ CREATE TABLE IF NOT EXISTS listings (
   json TEXT NOT NULL,
   PRIMARY KEY (search_id, id)
 );
-CREATE TABLE IF NOT EXISTS votes (
+CREATE TABLE IF NOT EXISTS evaluations (
   search_id TEXT NOT NULL,
-  lens TEXT NOT NULL,
+  listing_id TEXT NOT NULL,
   replica INTEGER NOT NULL,
   json TEXT NOT NULL,
-  PRIMARY KEY (search_id, lens, replica)
+  PRIMARY KEY (search_id, listing_id, replica)
 );
 CREATE TABLE IF NOT EXISTS results (
   search_id TEXT PRIMARY KEY,
@@ -57,8 +56,10 @@ export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmueble
   const stmtSaveCriteria = db.prepare('UPDATE searches SET criteria = ? WHERE id = ?');
   const stmtGetSearch = db.prepare('SELECT * FROM searches WHERE id = ?');
   const stmtGetPool = db.prepare('SELECT json FROM listings WHERE search_id = ?');
-  const stmtSaveVote = db.prepare('INSERT OR REPLACE INTO votes (search_id, lens, replica, json) VALUES (?, ?, ?, ?)');
-  const stmtGetVotes = db.prepare('SELECT json FROM votes WHERE search_id = ?');
+  const stmtSaveEvaluation = db.prepare(
+    'INSERT OR REPLACE INTO evaluations (search_id, listing_id, replica, json) VALUES (?, ?, ?, ?)',
+  );
+  const stmtGetEvaluations = db.prepare('SELECT json FROM evaluations WHERE search_id = ?');
   const stmtSaveResults = db.prepare('INSERT OR REPLACE INTO results (search_id, json) VALUES (?, ?)');
   const stmtGetResults = db.prepare('SELECT json FROM results WHERE search_id = ?');
 
@@ -92,19 +93,19 @@ export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmueble
       const rows = stmtGetPool.all(id) as { json: string }[];
       return rows.map((r) => JSON.parse(r.json) as NormalizedListing);
     },
-    saveVote(id: string, vote: Vote) {
-      stmtSaveVote.run(id, vote.lens, vote.replica, JSON.stringify(vote));
+    saveEvaluation(id: string, evaluation: Evaluation) {
+      stmtSaveEvaluation.run(id, evaluation.listingId, evaluation.replica, JSON.stringify(evaluation));
     },
-    getVotes(id: string): Vote[] {
-      const rows = stmtGetVotes.all(id) as { json: string }[];
-      return rows.map((r) => JSON.parse(r.json) as Vote);
+    getEvaluations(id: string): Evaluation[] {
+      const rows = stmtGetEvaluations.all(id) as { json: string }[];
+      return rows.map((r) => JSON.parse(r.json) as Evaluation);
     },
-    saveResults(id: string, output: ConsensusOutput) {
+    saveResults(id: string, output: SearchOutput) {
       stmtSaveResults.run(id, JSON.stringify(output));
     },
-    getResults(id: string): ConsensusOutput | undefined {
+    getResults(id: string): SearchOutput | undefined {
       const row = stmtGetResults.get(id) as { json: string } | undefined;
-      return row ? (JSON.parse(row.json) as ConsensusOutput) : undefined;
+      return row ? (JSON.parse(row.json) as SearchOutput) : undefined;
     },
     close() {
       db.close();

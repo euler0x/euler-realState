@@ -15,7 +15,7 @@ function asyncGen(messages: unknown[]) {
 describe('runIntake', () => {
   beforeEach(() => mockQuery.mockReset());
 
-  it('parses the description into criteria and appends rawDescription', async () => {
+  it('parses description into base criteria + atomic requirements', async () => {
     mockQuery.mockReturnValue(
       asyncGen([
         {
@@ -26,17 +26,43 @@ describe('runIntake', () => {
             propertyType: 'departamento',
             barrios: ['Palermo'],
             currency: 'ARS',
-            priceMax: 900000,
-            mustHaves: ['balcón'],
-            niceToHaves: [],
+            requirements: [
+              {
+                id: 'r1',
+                label: 'al menos 165 m²',
+                hardness: 'must',
+                kind: 'numeric',
+                predicate: { field: 'm2', op: '>=', value: 165 },
+              },
+              {
+                id: 'r2',
+                label: 'acepta mascotas',
+                hardness: 'must',
+                kind: 'textual',
+                statement: 'el aviso indica que acepta mascotas',
+              },
+              {
+                id: 'r3',
+                label: 'luminoso',
+                hardness: 'nice',
+                kind: 'textual',
+                statement: 'el aviso menciona que es luminoso',
+                weight: 1,
+              },
+            ],
           },
           usage: { input_tokens: 50, output_tokens: 30 },
         },
       ]),
     );
-    const { criteria, tokens } = await runIntake('depto en palermo con balcón hasta 900 mil');
+    const { criteria, tokens } = await runIntake(
+      'depto en palermo, mínimo 165 m2, que acepte mascotas, ojalá luminoso',
+    );
     expect(criteria.operation).toBe('alquiler');
-    expect(criteria.rawDescription).toBe('depto en palermo con balcón hasta 900 mil');
+    expect(criteria.rawDescription).toContain('palermo');
+    expect(criteria.requirements).toHaveLength(3);
+    expect(criteria.requirements[0].predicate).toEqual({ field: 'm2', op: '>=', value: 165 });
+    expect(criteria.requirements[1].hardness).toBe('must');
     expect(tokens).toBe(80);
     const opts = (mockQuery.mock.calls[0][0] as { options: Record<string, unknown> }).options;
     expect(opts.model).toBe('claude-sonnet-4-6');

@@ -2,23 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Stack } from '@mui/material';
-import type { ScoredListing, SearchEvent, SearchParams } from '~/types';
+import type { SearchCriteria, SearchEvent, SearchOutput, SearchParams } from '~/types';
 import { ProgressPanel } from './ProgressPanel';
 import { ResultsList } from './ResultsList';
 import { SearchForm } from './SearchForm';
 
 type Phase = 'idle' | 'running' | 'done';
 
-interface ResultsState {
-  results: ScoredListing[];
-  degraded: boolean;
-  partial: boolean;
-}
-
 export const SearchPage = () => {
   const [phase, setPhase] = useState<Phase>('idle');
   const [events, setEvents] = useState<SearchEvent[]>([]);
-  const [results, setResults] = useState<ResultsState | null>(null);
+  const [results, setResults] = useState<SearchOutput | null>(null);
+  const [criteria, setCriteria] = useState<SearchCriteria | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
 
   const start = useCallback(async (params: SearchParams) => {
@@ -31,6 +26,7 @@ export const SearchPage = () => {
     setPhase('running');
     setEvents([]);
     setResults(null);
+    setCriteria(null);
 
     const res = await fetch('/api/search', {
       method: 'POST',
@@ -57,13 +53,11 @@ export const SearchPage = () => {
         sourceRef.current = null;
         try {
           const data = (await (await fetch(`/api/search/${id}`)).json()) as {
-            results: { results: ScoredListing[]; degraded: boolean } | null;
+            search?: { criteria?: SearchCriteria };
+            results: SearchOutput | null;
           };
-          setResults({
-            results: data.results?.results ?? [],
-            degraded: data.results?.degraded ?? false,
-            partial: event.partial,
-          });
+          setResults(data.results);
+          setCriteria(data.search?.criteria ?? null);
         } catch {
           setEvents((prev) => [...prev, { type: 'error', message: 'No se pudieron cargar los resultados finales.' }]);
         } finally {
@@ -95,7 +89,7 @@ export const SearchPage = () => {
     <Stack spacing={3} alignItems='center' width='100%' py={4}>
       <SearchForm disabled={phase === 'running'} onSubmit={start} />
       {events.length > 0 && <ProgressPanel events={events} />}
-      {results && <ResultsList results={results.results} degraded={results.degraded} partial={results.partial} />}
+      {results && <ResultsList output={results} criteria={criteria ?? undefined} />}
     </Stack>
   );
 };
