@@ -1,17 +1,35 @@
+// ---- Requisitos atómicos (salida del intake) ----
+export type RequirementHardness = 'must' | 'nice';
+export type RequirementKind = 'numeric' | 'textual';
+export type NumericField = 'm2' | 'price' | 'ambientes' | 'expensas';
+export type NumericOp = '>=' | '<=' | '==';
+
+export interface NumericPredicate {
+  field: NumericField;
+  op: NumericOp;
+  value: number;
+}
+
+export interface Requirement {
+  id: string;
+  label: string; // texto humano: "al menos 165 m²", "acepta mascotas"
+  hardness: RequirementHardness;
+  kind: RequirementKind;
+  predicate?: NumericPredicate; // presente si kind === 'numeric'
+  statement?: string; // presente si kind === 'textual': "el aviso indica que acepta mascotas"
+  weight?: number; // peso del nice-to-have en el ranking (default 1)
+}
+
 export interface SearchCriteria {
   operation: 'alquiler' | 'venta';
   propertyType: 'departamento' | 'casa' | 'ph';
-  barrios: string[]; // e.g. ['Palermo', 'Villa Crespo']
-  priceMin?: number;
-  priceMax?: number;
+  barrios: string[];
   currency: 'ARS' | 'USD';
-  ambientesMin?: number;
-  m2Min?: number;
-  mustHaves: string[]; // e.g. ['balcón', 'apto mascotas']
-  niceToHaves: string[];
+  requirements: Requirement[];
   rawDescription: string;
 }
 
+// ---- Listings ----
 export interface NormalizedListing {
   id: string; // sha1 of canonical URL
   url: string;
@@ -23,43 +41,53 @@ export interface NormalizedListing {
   ambientes?: number;
   m2?: number;
   features: string[];
-  description: string; // truncated to ~150 words
-  publishedAt?: string; // ISO 8601, e.g. "2026-06-07T10:00:00Z"
+  description: string; // de la tarjeta, truncada ~150 palabras
+  detailDescription?: string; // descripción completa de la página de detalle
+  amenities?: string[]; // amenities de la página de detalle
+  dataSource: 'card' | 'detail'; // 'card' si el detalle falló
+  publishedAt?: string; // ISO 8601
 }
 
-export type VerdictValue = 'match' | 'reject' | 'unsure';
+// ---- Evaluación ----
+export type Verdict = 'met' | 'not_met' | 'unknown';
 
-export interface LensVerdict {
-  id: string; // listing id
-  verdict: VerdictValue;
-  reason: string;
+export interface RequirementVerdict {
+  requirementId: string;
+  verdict: Verdict;
+  evidence: string | null; // cita textual; obligatoria para 'met'
 }
 
-export interface Vote {
-  lens: string;
+/** Resultado de UNA réplica textual sobre UN aviso. */
+export interface Evaluation {
+  listingId: string;
   replica: number;
-  verdicts: LensVerdict[];
+  verdicts: RequirementVerdict[]; // solo requisitos textuales + red-flags
 }
 
-/** Flattened per-listing view of a LensVerdict, tagged with its lens and replica for display. */
-export interface LensReason {
-  lens: string;
-  replica: number;
-  verdict: VerdictValue;
-  reason: string;
-}
-
-export interface ScoredListing {
+export interface EvaluatedListing {
   listing: NormalizedListing;
-  score: number; // 0..1 over scoring lenses (red-flags excluded)
-  matchedLenses: number;
-  totalLenses: number;
+  passed: boolean;
+  requirementResults: RequirementVerdict[]; // numéricos (código) + textuales (mayoría), por requirementId
+  niceScore: number; // 0..1
   redFlag: boolean;
-  reasons: LensReason[];
+  partialData: boolean; // listing.dataSource === 'card'
 }
 
-export type SearchPhase = 'intake' | 'acquisition' | 'voting' | 'consensus' | 'done' | 'error';
+export interface ExclusionBucket {
+  reason: string;
+  count: number;
+  listingIds: string[];
+}
 
+export interface SearchOutput {
+  survivors: EvaluatedListing[]; // ordenados: niceScore desc, luego precio asc
+  exclusions: ExclusionBucket[];
+  unevaluable: { listingId: string; error: string }[];
+  degraded: boolean;
+}
+
+// ---- Eventos / progreso ----
+export type SearchPhase = 'intake' | 'acquisition' | 'numeric_gate' | 'textual_eval' | 'ranking' | 'done' | 'error';
 export type AdapterEventStatus = 'running' | 'ok' | 'blocked' | 'error';
 export type AgentEventStatus = 'running' | 'ok' | 'error' | 'skipped';
 
@@ -67,14 +95,18 @@ export type SearchEvent =
   | { type: 'phase'; phase: SearchPhase }
   | { type: 'criteria'; criteria: SearchCriteria }
   | { type: 'adapter'; portal: string; status: AdapterEventStatus; count?: number; detail?: string }
-  | { type: 'agent'; lens: string; replica: number; status: AgentEventStatus; detail?: string }
+  | { type: 'detail'; fetched: number; total: number } // progreso de fetch de detalle
+  | { type: 'gate'; survived: number; total: number } // resultado del gate numérico
+  | { type: 'eval'; listingId: string; replica: number; status: AgentEventStatus; detail?: string }
   | { type: 'tokens'; total: number; budget: number }
   | { type: 'done'; resultCount: number; degraded: boolean; partial: boolean }
   | { type: 'error'; message: string };
 
 export interface SearchParams {
   description: string;
-  replicas: number; // replicas per lens: 1 | 2 | 4
-  threshold: number; // 0..1 fraction of scoring lenses that must match
-  tokenBudget: number; // hard cap for the whole search
+  replicas: number; // réplicas por aviso: 1 | 2 | 4
+  tokenBudget: number; // tope duro de tokens
+  criteria?: SearchCriteria; // si viene (editado por el usuario), se saltea el intake
 }
+
+export const RED_FLAGS_ID = '__redflags__';
