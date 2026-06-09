@@ -107,6 +107,30 @@ describe('rankResults', () => {
     expect(out.survivors[0].partialData).toBe(true);
   });
 
+  it('orders survivors by niceScore desc (higher nice score first, regardless of price)', () => {
+    const gated: GatedListing[] = [
+      // a: cheaper but lower niceScore (only luminoso met = 1/3)
+      { listing: mk('a', { price: { amount: 500_000, currency: 'ARS' } }), numericVerdicts: [], failReason: undefined },
+      // b: pricier but higher niceScore (luminoso + cochera met = 3/3)
+      { listing: mk('b', { price: { amount: 900_000, currency: 'ARS' } }), numericVerdicts: [], failReason: undefined },
+    ];
+    const evals = [
+      ev('a', 1, [
+        { requirementId: 'r2', verdict: 'met', evidence: 'apto mascotas' },
+        { requirementId: 'r3', verdict: 'met', evidence: 'luminoso' },
+        { requirementId: 'r4', verdict: 'not_met', evidence: null },
+      ]),
+      ev('b', 1, [
+        { requirementId: 'r2', verdict: 'met', evidence: 'apto mascotas' },
+        { requirementId: 'r3', verdict: 'met', evidence: 'luminoso' },
+        { requirementId: 'r4', verdict: 'met', evidence: 'apto mascotas' }, // evidence substring real → cochera "met"
+      ]),
+    ];
+    const out = rankResults(gated, evals, reqs, { replicas: 1 });
+    // b has higher niceScore (3/3) so ranks first despite being pricier
+    expect(out.survivors.map((s) => s.listing.id)).toEqual(['b', 'a']);
+  });
+
   it('orders survivors by niceScore desc then price asc', () => {
     const gated: GatedListing[] = [
       { listing: mk('a', { price: { amount: 700_000, currency: 'ARS' } }), numericVerdicts: [], failReason: undefined },

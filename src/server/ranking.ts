@@ -31,11 +31,14 @@ function listingText(l: NormalizedListing): string {
  * `requireEvidence`: para requisitos del usuario un 'met' solo cuenta si la cita aparece en el
  * texto (anti-alucinación). Para el check de red-flags es `false`, porque un red flag es un
  * juicio ("precio sospechosamente bajo"), no una cita literal del aviso.
+ * `replicas`: cantidad total esperada de réplicas — las réplicas faltantes restan confianza,
+ * por lo que se requiere mayoría estricta sobre ese total (threshold = replicas / 2).
  */
 function majorityVerdict(
   reqId: string,
   evals: Evaluation[],
   text: string,
+  replicas: number,
   requireEvidence = true,
 ): { verdict: Verdict; evidence: string | null } {
   let met = 0;
@@ -54,8 +57,9 @@ function majorityVerdict(
       notMet += 1;
     }
   }
-  if (met > notMet) return { verdict: 'met', evidence };
-  if (notMet > met) return { verdict: 'not_met', evidence: null };
+  const threshold = replicas / 2; // mayoría estricta de las réplicas ESPERADAS: réplicas faltantes restan confianza
+  if (met > threshold) return { verdict: 'met', evidence };
+  if (notMet > threshold) return { verdict: 'not_met', evidence: null };
   return { verdict: 'unknown', evidence: null };
 }
 
@@ -70,7 +74,7 @@ export function rankResults(
   gated: GatedListing[],
   evaluations: Evaluation[],
   requirements: Requirement[],
-  opts: RankOptions, // eslint-disable-line @typescript-eslint/no-unused-vars
+  opts: RankOptions,
 ): SearchOutput {
   const textualReqs = requirements.filter((r) => r.kind === 'textual');
   const hardTextual = textualReqs.filter((r) => r.hardness === 'must');
@@ -99,7 +103,7 @@ export function rankResults(
 
     // 3. resolver cada requisito textual por mayoría
     for (const r of textualReqs) {
-      const m = majorityVerdict(r.id, evalsForListing, text);
+      const m = majorityVerdict(r.id, evalsForListing, text, opts.replicas);
       requirementResults.push({ requirementId: r.id, verdict: m.verdict, evidence: m.evidence });
     }
 
@@ -116,7 +120,7 @@ export function rankResults(
     if (excluded) continue;
 
     // 5. red flag (marcador, no gate) — sin validación de evidencia (es un juicio, no una cita)
-    const rf = majorityVerdict(RED_FLAGS_ID, evalsForListing, text, false);
+    const rf = majorityVerdict(RED_FLAGS_ID, evalsForListing, text, opts.replicas, false);
     const redFlag = rf.verdict === 'met';
 
     // 6. niceScore = peso de nice cumplidos / peso total nice
