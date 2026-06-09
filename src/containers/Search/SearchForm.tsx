@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, MenuItem, Select, SelectChangeEvent, Slider, Stack, TextField, Typography } from '@mui/material';
-import type { SearchParams } from '~/types';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import { Button, Chip, IconButton, MenuItem, Select, Stack, Tooltip, Typography } from '@mui/material';
+import type { Requirement, SearchCriteria, SearchParams } from '~/types';
 
 const DEPTHS = [
-  { replicas: 1, label: 'Económico — 6 agentes (1 por lente)' },
-  { replicas: 2, label: 'Medio — 12 agentes (2 por lente)' },
-  { replicas: 4, label: 'Profundo — 24 agentes (4 por lente)' },
+  { replicas: 1, label: 'Económico (1× por aviso)' },
+  { replicas: 2, label: 'Medio (2×)' },
+  { replicas: 4, label: 'Profundo (4×)' },
 ];
-
 const BUDGETS = [
   { value: 200_000, label: '200k tokens' },
   { value: 500_000, label: '500k tokens' },
@@ -24,60 +24,126 @@ type Props = {
 export const SearchForm = ({ disabled, onSubmit }: Props) => {
   const [description, setDescription] = useState('');
   const [replicas, setReplicas] = useState(1);
-  const [threshold, setThreshold] = useState(0.6);
   const [tokenBudget, setTokenBudget] = useState(500_000);
+  const [criteria, setCriteria] = useState<SearchCriteria | null>(null);
+  const [interpreting, setInterpreting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleReplicasChange = (e: SelectChangeEvent<number>) => setReplicas(Number(e.target.value));
-  const handleBudgetChange = (e: SelectChangeEvent<number>) => setTokenBudget(Number(e.target.value));
-  const handleThresholdChange = (_: Event, v: number | number[]) => setThreshold(v as number);
+  const interpret = async () => {
+    setInterpreting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/intake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: description.trim() }),
+      });
+      const data = (await res.json()) as { criteria?: SearchCriteria; error?: string };
+      if (!res.ok || !data.criteria) throw new Error(data.error ?? 'No se pudo interpretar');
+      setCriteria(data.criteria);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'error');
+    } finally {
+      setInterpreting(false);
+    }
+  };
+
+  const toggleHardness = (id: string) =>
+    setCriteria((c) =>
+      c
+        ? {
+            ...c,
+            requirements: c.requirements.map((r) =>
+              r.id === id ? { ...r, hardness: r.hardness === 'must' ? 'nice' : 'must' } : r,
+            ),
+          }
+        : c,
+    );
 
   return (
     <Stack spacing={2} width='100%' maxWidth='72rem'>
-      <TextField
-        multiline
-        minRows={5}
-        label='Describí el inmueble que buscás (cuanto más detalle, mejor)'
+      <textarea
+        style={{ width: '100%', minHeight: '8rem', fontFamily: 'inherit', fontSize: '1rem', padding: '0.75rem' }}
+        placeholder='Describí el inmueble que buscás (cuanto más detalle, mejor)'
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         disabled={disabled}
-        inputProps={{ 'data-testid': 'description-input' }}
+        data-testid='description-input'
       />
-      <Stack direction='row' spacing={2} alignItems='center'>
-        <Select<number> value={replicas} onChange={handleReplicasChange} disabled={disabled} size='small'>
-          {DEPTHS.map((d) => (
-            <MenuItem key={d.replicas} value={d.replicas}>
-              {d.label}
-            </MenuItem>
-          ))}
-        </Select>
-        <Select<number> value={tokenBudget} onChange={handleBudgetChange} disabled={disabled} size='small'>
-          {BUDGETS.map((b) => (
-            <MenuItem key={b.value} value={b.value}>
-              {b.label}
-            </MenuItem>
-          ))}
-        </Select>
-        <Stack flex={1} px={2}>
-          <Typography variant='caption'>Threshold de consenso: {Math.round(threshold * 100)}%</Typography>
-          <Slider
-            min={0.2}
-            max={1}
-            step={0.1}
-            value={threshold}
-            onChange={handleThresholdChange}
-            disabled={disabled}
-            size='small'
-          />
-        </Stack>
+
+      {!criteria && (
         <Button
-          variant='contained'
-          disabled={disabled || description.trim().length < 30}
-          onClick={() => onSubmit({ description: description.trim(), replicas, threshold, tokenBudget })}
-          data-testid='search-button'
+          variant='outlined'
+          disabled={disabled || interpreting || description.trim().length < 30}
+          onClick={interpret}
         >
-          Buscar
+          {interpreting ? 'Interpretando…' : 'Interpretar requisitos'}
         </Button>
-      </Stack>
+      )}
+      {error && (
+        <Typography color='error' variant='body2'>
+          {error}
+        </Typography>
+      )}
+
+      {criteria && (
+        <Stack spacing={1.5}>
+          <Typography variant='subtitle2'>
+            Tu búsqueda, interpretada — clickeá un requisito para cambiar must↔nice:
+          </Typography>
+          <Stack direction='row' spacing={0.5} flexWrap='wrap' useFlexGap>
+            {criteria.requirements.map((r: Requirement) => (
+              <Tooltip key={r.id} title={r.hardness === 'must' ? 'Innegociable (filtra)' : 'Deseable (rankea)'}>
+                <Chip
+                  size='small'
+                  color={r.hardness === 'must' ? 'error' : 'default'}
+                  variant={r.hardness === 'must' ? 'filled' : 'outlined'}
+                  label={`${r.hardness === 'must' ? '⛔' : '⭐'} ${r.label}`}
+                  onClick={() => !disabled && toggleHardness(r.id)}
+                  icon={<SwapHorizIcon />}
+                />
+              </Tooltip>
+            ))}
+          </Stack>
+          <Stack direction='row' spacing={2} alignItems='center'>
+            <Select
+              value={replicas}
+              onChange={(e) => setReplicas(Number(e.target.value))}
+              disabled={disabled}
+              size='small'
+            >
+              {DEPTHS.map((d) => (
+                <MenuItem key={d.replicas} value={d.replicas}>
+                  {d.label}
+                </MenuItem>
+              ))}
+            </Select>
+            <Select
+              value={tokenBudget}
+              onChange={(e) => setTokenBudget(Number(e.target.value))}
+              disabled={disabled}
+              size='small'
+            >
+              {BUDGETS.map((b) => (
+                <MenuItem key={b.value} value={b.value}>
+                  {b.label}
+                </MenuItem>
+              ))}
+            </Select>
+            <Button
+              variant='contained'
+              disabled={disabled}
+              data-testid='search-button'
+              onClick={() => onSubmit({ description: description.trim(), replicas, tokenBudget, criteria })}
+            >
+              Buscar
+            </Button>
+            <IconButton size='small' onClick={() => setCriteria(null)} disabled={disabled} title='Volver a interpretar'>
+              <SwapHorizIcon />
+            </IconButton>
+          </Stack>
+        </Stack>
+      )}
     </Stack>
   );
 };
