@@ -1,4 +1,5 @@
 import type { NormalizedListing } from '~/types';
+import { parseDetail } from './detail';
 import { normalizeListing } from './normalize';
 import { parseListings } from './parse';
 import { buildSearchUrls } from './url';
@@ -8,6 +9,8 @@ const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 const FETCH_TIMEOUT_MS = 15_000;
 const BLOCK_STATUSES = [403, 429, 503];
+const DETAIL_CONCURRENCY = 5;
+const DETAIL_DELAY_MS = 150;
 
 async function fetchPage(url: string): Promise<{ html?: string; blocked: boolean }> {
   const res = await fetch(url, {
@@ -17,6 +20,29 @@ async function fetchPage(url: string): Promise<{ html?: string; blocked: boolean
   if (!res.ok) return { blocked: BLOCK_STATUSES.includes(res.status) };
   const html = await res.text();
   return { html, blocked: false };
+}
+
+async function enrichWithDetail(listings: NormalizedListing[]): Promise<NormalizedListing[]> {
+  const queue = [...listings];
+  const out: NormalizedListing[] = [];
+  const worker = async () => {
+    for (let l = queue.shift(); l !== undefined; l = queue.shift()) {
+      try {
+        await new Promise((r) => setTimeout(r, DETAIL_DELAY_MS));
+        const page = await fetchPage(l.url);
+        if (page.html) {
+          const d = parseDetail(page.html);
+          out.push({ ...l, detailDescription: d.detailDescription, amenities: d.amenities, dataSource: 'detail' });
+          continue;
+        }
+      } catch {
+        // cae a datos de tarjeta
+      }
+      out.push({ ...l, dataSource: 'card' });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(DETAIL_CONCURRENCY, queue.length) }, worker));
+  return out;
 }
 
 export const argenpropAdapter: PortalAdapter = {
@@ -54,6 +80,7 @@ export const argenpropAdapter: PortalAdapter = {
     if (byId.size === 0 && !blocked && errorCount > 0 && errorCount === urls.length)
       return { status: 'error', listings: [], detail: 'all barrio fetches failed' };
     if (byId.size === 0 && blocked) return { status: 'blocked', listings: [], detail: 'challenge o status de bloqueo' };
-    return { status: 'ok', listings: [...byId.values()] };
+    const enriched = await enrichWithDetail([...byId.values()]);
+    return { status: 'ok', listings: enriched };
   },
 };

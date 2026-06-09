@@ -53,5 +53,6 @@ export function normalizeListing(raw: RawArgenpropListing, barrio: string): Norm
     m2: extractNumber(raw.featuresText, /(\d+)\s*m[²2]/i),
     features: raw.featuresText.map((f) => f.trim()).filter(Boolean),
     description: truncateWords(`${raw.addressText}. ${raw.description}`),
+    dataSource: 'card' as const,
   };
 }
