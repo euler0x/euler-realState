@@ -19,10 +19,18 @@ export interface SearchDeps {
   evaluate: typeof runEvaluator;
   emit: (e: SearchEvent) => void;
   concurrency?: number;
+  chunkSize?: number;
 }
 
 const DEFAULT_CONCURRENCY = 4;
-const ESTIMATED_EVAL_TOKENS = 40_000;
+const DEFAULT_CHUNK_SIZE = 12;
+const ESTIMATED_EVAL_TOKENS = 50_000; // reserva optimista POR CHUNK (reconciliada con el costo real)
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 async function mapWithConcurrency<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
   const queue = [...items];
@@ -100,31 +108,47 @@ export async function runSearch(id: string, params: SearchParams, deps: SearchDe
     emit({ type: 'phase', phase: 'textual_eval' });
     const hasTextual = criteria.requirements.some((r) => r.kind === 'textual');
     if (hasTextual && survivorsOfGate.length > 0) {
-      const jobs = survivorsOfGate.flatMap((g) =>
-        Array.from({ length: params.replicas }, (_, i) => ({ listing: g.listing, replica: i + 1 })),
+      const chunks = chunk(
+        survivorsOfGate.map((g) => g.listing),
+        deps.chunkSize ?? DEFAULT_CHUNK_SIZE,
       );
-      await mapWithConcurrency(jobs, deps.concurrency ?? DEFAULT_CONCURRENCY, async ({ listing, replica }) => {
+      const jobs = chunks.flatMap((listings) =>
+        Array.from({ length: params.replicas }, (_, i) => ({ listings, replica: i + 1 })),
+      );
+      await mapWithConcurrency(jobs, deps.concurrency ?? DEFAULT_CONCURRENCY, async ({ listings, replica }) => {
         if (tokensUsed >= params.tokenBudget) {
-          emit({ type: 'eval', listingId: listing.id, replica, status: 'skipped' });
+          for (const l of listings) emit({ type: 'eval', listingId: l.id, replica, status: 'skipped' });
           return;
         }
         tokensUsed += ESTIMATED_EVAL_TOKENS;
-        emit({ type: 'eval', listingId: listing.id, replica, status: 'running' });
+        for (const l of listings) emit({ type: 'eval', listingId: l.id, replica, status: 'running' });
         try {
-          const { evaluation, tokens } = await deps.evaluate({ listing, requirements: criteria.requirements, replica });
+          const { evaluations, tokens } = await deps.evaluate({
+            listings,
+            requirements: criteria.requirements,
+            replica,
+          });
           tokensUsed += tokens - ESTIMATED_EVAL_TOKENS;
           emit({ type: 'tokens', total: tokensUsed, budget: params.tokenBudget });
-          db.saveEvaluation(id, evaluation);
-          emit({ type: 'eval', listingId: listing.id, replica, status: 'ok' });
+          const returnedIds = new Set(evaluations.map((e) => e.listingId));
+          for (const evaluation of evaluations) db.saveEvaluation(id, evaluation);
+          for (const l of listings) {
+            if (returnedIds.has(l.id)) {
+              emit({ type: 'eval', listingId: l.id, replica, status: 'ok' });
+            } else {
+              emit({
+                type: 'eval',
+                listingId: l.id,
+                replica,
+                status: 'error',
+                detail: 'sin veredictos en la respuesta del chunk',
+              });
+            }
+          }
         } catch (err) {
           tokensUsed -= ESTIMATED_EVAL_TOKENS;
-          emit({
-            type: 'eval',
-            listingId: listing.id,
-            replica,
-            status: 'error',
-            detail: err instanceof Error ? err.message : String(err),
-          });
+          const detail = err instanceof Error ? err.message : String(err);
+          for (const l of listings) emit({ type: 'eval', listingId: l.id, replica, status: 'error', detail });
         }
       });
     }
