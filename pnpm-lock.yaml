@@ -99,6 +99,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: 8.7.0
         version: 8.7.0(eslint@9.11.1(jiti@2.1.2))(typescript@5.6.2)
+      csv-parse:
+        specifier: ^6.2.1
+        version: 6.2.1
       eslint:
         specifier: 9.11.1
         version: 9.11.1(jiti@2.1.2)
@@ -2301,6 +2304,9 @@ packages:
 
   csstype@3.1.3:
     resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
+
+  csv-parse@6.2.1:
+    resolution: {integrity: sha512-LRLMV+UCyfMokp8Wb411duBf1gaBKJfOfBWU9eHMJ+b+cJYZsNu3AFmjJf3+yPGd59Exz1TsMjaSFyxnYB9+IQ==}
 
   damerau-levenshtein@1.0.8:
     resolution: {integrity: sha512-sdQSFB7+llfUcQHUQO3+B8ERRj0Oa4w9POWMI/puGtuf7gFywGmkaLCElnudfTiKZV+NvHqL0ifzdrI8Ro7ESA==}
@@ -7375,6 +7381,8 @@ snapshots:
       rrweb-cssom: 0.7.1
 
   csstype@3.1.3: {}
+
+  csv-parse@6.2.1: {}
 
   damerau-levenshtein@1.0.8: {}
 

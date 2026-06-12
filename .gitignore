@@ -39,3 +39,6 @@ tsconfig.tsbuildinfo
 
 # local sqlite data
 .data/
+
+# geo build cache (CSVs crudos del GCBA, no se commitean)
+scripts/.cache/
