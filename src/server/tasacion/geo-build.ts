@@ -37,11 +37,17 @@ export function cellKey(lat: number, lon: number): string {
   return `${Math.floor(lat / D_LAT)}_${Math.floor(lon / D_LON)}`;
 }
 
-export function cellCenter(key: string): Point {
+function parseKey(key: string): [number, number] {
   const [i, j] = key.split('_').map(Number);
+  return [i, j];
+}
+
+export function cellCenter(key: string): Point {
+  const [i, j] = parseKey(key);
   return { lat: (i + 0.5) * D_LAT, lon: (j + 0.5) * D_LON };
 }
 
+/** Precondición: values no vacío (con [] devuelve NaN). */
 export function median(values: number[]): number {
   const s = [...values].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
@@ -52,12 +58,23 @@ function clamp(v: number, [lo, hi]: [number, number]): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
-/** rel = usdM2 / mediana(usdM2 del mismo barrio en el mismo año) — elimina inflación y drift. */
+function getOrInit<K>(map: Map<K, number[]>, key: K): number[] {
+  let arr = map.get(key);
+  if (!arr) {
+    arr = [];
+    map.set(key, arr);
+  }
+  return arr;
+}
+
+/**
+ * rel = usdM2 / mediana(usdM2 del mismo barrio en el mismo año) — elimina inflación y drift.
+ * Precondición: usdM2 > 0 (el caller filtra; con 0/negativos el rel sale NaN o sin sentido).
+ */
 export function computeRels(listings: RawListing[]): RelPoint[] {
   const groups = new Map<string, number[]>();
   for (const l of listings) {
-    const g = `${l.barrio}|${l.anio}`;
-    (groups.get(g) ?? groups.set(g, []).get(g)!).push(l.usdM2);
+    getOrInit(groups, `${l.barrio}|${l.anio}`).push(l.usdM2);
   }
   const medians = new Map<string, number>();
   for (const [g, vals] of groups) medians.set(g, median(vals));
@@ -103,8 +120,7 @@ export function segmentCrossesBarriers(a: Point, b: Point, barriers: Polyline[])
 export function buildCells(rels: RelPoint[]): Map<string, number[]> {
   const cells = new Map<string, number[]>();
   for (const r of rels) {
-    const k = cellKey(r.lat, r.lon);
-    (cells.get(k) ?? cells.set(k, []).get(k)!).push(r.rel);
+    getOrInit(cells, cellKey(r.lat, r.lon)).push(r.rel);
   }
   return cells;
 }
@@ -129,6 +145,12 @@ export interface SmoothOptions {
  * Suavizado con barreras: una celda con pocas muestras junta datos de vecinas vía BFS,
  * pero una arista entre celdas se bloquea si el segmento entre centros cruza una barrera.
  * Así "el otro lado de la vía" nunca contamina el multiplicador.
+ *
+ * Límite de resolución conocido: el bloqueo se decide a nivel de CENTROS de celda. Si una
+ * barrera atraviesa una celda lejos de su centro, los datos de esa celda que quedaron del
+ * otro lado pueden filtrarse al pool de una vecina (leak acotado a <1 celda, ~166 m, pegado
+ * a la vía). Aceptado por diseño; si molesta en la práctica, densificar la grilla cerca de
+ * barreras en el script de build.
  */
 export function smoothCells(
   cells: Map<string, number[]>,
@@ -148,7 +170,7 @@ export function smoothCells(
     for (let depth = 0; depth < opts.maxDepth && pool.length < opts.minSamples; depth++) {
       const next: string[] = [];
       for (const k of frontier) {
-        const [i, j] = k.split('_').map(Number);
+        const [i, j] = parseKey(k);
         const from = cellCenter(k);
         for (const [di, dj] of NEIGHBORS) {
           const nk = `${i + di}_${j + dj}`;
