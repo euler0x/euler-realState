@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "descripcion": "USD/m² PUBLICADO (precio de oferta) para departamentos, por barrio CABA",
+    "verificado": "2026-06-12",
+    "actualizar": "mensual — ver README.md"
+  },
+  "fallback": { "usdM2": 2460, "fuente": "Zonaprop (vía Revista Mercado/La Nación)", "fecha": "2026-05" },
+  "barrios": {
+    "puerto madero": { "usdM2": 6140, "fuente": "Zonaprop (vía Revista Mercado)", "fecha": "2026-05" },
+    "palermo": { "usdM2": 3403, "fuente": "Zonaprop (vía Revista Mercado)", "fecha": "2026-05" },
+    "nunez": { "usdM2": 3392, "fuente": "Zonaprop (vía La Nación)", "fecha": "2026-05" },
+    "saavedra": { "usdM2": 2852, "fuente": "Zonaprop (vía La Nación)", "fecha": "2026-05" },
+    "colegiales": { "usdM2": 2679, "fuente": "Mudafy/Metrafy", "fecha": "2026-01" },
+    "belgrano": { "usdM2": 2526, "fuente": "Mudafy", "fecha": "2026-01" },
+    "recoleta": { "usdM2": 2459, "fuente": "Mudafy", "fecha": "2026-01" },
+    "villa crespo": { "usdM2": 2085, "fuente": "Mudafy", "fecha": "2026-01" },
+    "caballito": { "usdM2": 1952, "fuente": "Mudafy", "fecha": "2026-01" },
+    "almagro": { "usdM2": 1818, "fuente": "Mudafy", "fecha": "2026-01" },
+    "constitucion": { "usdM2": 1802, "fuente": "Zonaprop (vía La Nación)", "fecha": "2026-05" },
+    "flores": { "usdM2": 1652, "fuente": "Mudafy", "fecha": "2026-01" },
+    "nueva pompeya": { "usdM2": 1459, "fuente": "Zonaprop (vía Revista Mercado)", "fecha": "2026-05" },
+    "villa lugano": { "usdM2": 1058, "fuente": "Zonaprop (vía La Nación)", "fecha": "2026-05" }
+  }
+}

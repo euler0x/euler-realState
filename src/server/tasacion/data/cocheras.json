@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "descripcion": "Valor cochera USD por barrio (punto medio de rangos publicados)",
+    "verificado": "2026-06-12",
+    "fuentes": "La Nación may/jun 2026, REMAX Buro II may 2026"
+  },
+  "default": 25000,
+  "barrios": {
+    "puerto madero": 50000,
+    "palermo": 42500,
+    "recoleta": 36000,
+    "colegiales": 35000,
+    "belgrano": 32500,
+    "caballito": 30000
+  }
+}

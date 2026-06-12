@@ -2,7 +2,6 @@
 import { expect, jest } from '@jest/globals';
 import {
   RED_FLAGS_ID,
-  type Evaluation,
   type NormalizedListing,
   type SearchCriteria,
   type SearchEvent,
@@ -53,16 +52,16 @@ function makeDeps(db: SearchDb, events: SearchEvent[], over: Partial<SearchDeps>
       },
     ],
     intake: async () => ({ criteria, tokens: 100 }),
-    evaluate: async ({ listing, replica }) => ({
-      evaluation: {
+    evaluate: async ({ listings, replica }) => ({
+      evaluations: listings.map((listing) => ({
         listingId: listing.id,
         replica,
         verdicts: [
-          { requirementId: 'r2', verdict: 'met', evidence: 'apto mascotas' },
-          { requirementId: 'r3', verdict: 'met', evidence: 'luminoso' },
-          { requirementId: RED_FLAGS_ID, verdict: 'not_met', evidence: null },
+          { requirementId: 'r2', verdict: 'met' as const, evidence: 'apto mascotas' },
+          { requirementId: 'r3', verdict: 'met' as const, evidence: 'luminoso' },
+          { requirementId: RED_FLAGS_ID, verdict: 'not_met' as const, evidence: null },
         ],
-      } as Evaluation,
+      })),
       tokens: 1000,
     }),
     emit: (e) => events.push(e),
@@ -87,7 +86,9 @@ describe('runSearch v2', () => {
     const out = db.getResults('s1')!;
     expect(out.survivors.map((s) => s.listing.id)).toEqual(['big']);
     expect(out.exclusions.some((b) => b.listingIds.includes('small'))).toBe(true);
-    const evaluatedIds = evaluate.mock.calls.map((c) => (c[0] as { listing: NormalizedListing }).listing.id);
+    const evaluatedIds = evaluate.mock.calls.flatMap((c) =>
+      (c[0] as { listings: NormalizedListing[] }).listings.map((l) => l.id),
+    );
     expect(evaluatedIds).not.toContain('small');
     expect(db.getSearch('s1')?.status).toBe('done');
   });
@@ -132,5 +133,27 @@ describe('runSearch v2', () => {
     await runSearch('s1', params, makeDeps(db, events));
     const phases = events.filter((e) => e.type === 'phase').map((e) => (e as { phase: string }).phase);
     expect(phases).toEqual(['intake', 'acquisition', 'numeric_gate', 'textual_eval', 'ranking']);
+  });
+
+  it('partitions gate survivors into chunks of chunkSize × replicas', async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ ...big, id: `b${i}`, url: `https://x/b${i}` }));
+    db.createSearch('s1', { ...params, replicas: 2 });
+    const evaluate = jest.fn(makeDeps(db, events).evaluate);
+    await runSearch(
+      's1',
+      { ...params, replicas: 2 },
+      makeDeps(db, events, {
+        adapters: [
+          { name: 'argenprop', tier: 'scraper', search: async () => ({ status: 'ok' as const, listings: many }) },
+        ],
+        evaluate,
+        chunkSize: 2,
+      }),
+    );
+    // 5 sobrevivientes / chunkSize 2 = 3 chunks; × 2 réplicas = 6 llamadas
+    expect(evaluate).toHaveBeenCalledTimes(6);
+    const sizes = evaluate.mock.calls.map((c) => (c[0] as { listings: unknown[] }).listings.length).sort();
+    expect(sizes).toEqual([1, 1, 2, 2, 2, 2]);
+    expect(db.getEvaluations('s1')).toHaveLength(10); // 5 listings × 2 réplicas
   });
 });
