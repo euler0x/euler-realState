@@ -39,7 +39,8 @@ export interface MicroCell {
   smoothed: boolean;
 }
 
-const CELLS = index.cells as Record<string, [number, number, number]>;
+// El JSON importado tipa cada celda como number[]; el script de build garantiza tuplas [mult, avisos, smoothed01].
+const CELLS = index.cells as unknown as Record<string, [number, number, number]>;
 
 /** Lookup O(1) del multiplicador de micro-zona. Null si la celda no tiene datos. */
 export function microLookup(lat: number, lon: number): MicroCell | null {
