@@ -28,6 +28,13 @@ CREATE TABLE IF NOT EXISTS results (
   search_id TEXT PRIMARY KEY,
   json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tasaciones (
+  id TEXT PRIMARY KEY,
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL,
+  input TEXT NOT NULL,
+  result TEXT NOT NULL
+);
 `;
 
 export interface SearchRow {
@@ -36,6 +43,22 @@ export interface SearchRow {
   criteria?: SearchCriteria;
   status: string;
   createdAt: string;
+}
+
+export interface TasacionGuardada {
+  id: string;
+  fecha: string;
+  description: string;
+  input: Record<string, unknown>;
+  result: Record<string, unknown>;
+}
+
+export interface TasacionListItem {
+  id: string;
+  fecha: string;
+  titulo: string;
+  valorEstimadoUsd: number;
+  confianza: string;
 }
 
 export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmuebles.db') {
@@ -62,6 +85,12 @@ export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmueble
   const stmtGetEvaluations = db.prepare('SELECT json FROM evaluations WHERE search_id = ?');
   const stmtSaveResults = db.prepare('INSERT OR REPLACE INTO results (search_id, json) VALUES (?, ?)');
   const stmtGetResults = db.prepare('SELECT json FROM results WHERE search_id = ?');
+
+  const stmtSaveTasacion = db.prepare(
+    'INSERT OR REPLACE INTO tasaciones (id, description, input, result) VALUES (?, ?, ?, ?)',
+  );
+  const stmtGetTasacion = db.prepare('SELECT * FROM tasaciones WHERE id = ?');
+  const stmtListTasaciones = db.prepare('SELECT id, fecha, input, result FROM tasaciones ORDER BY fecha DESC, id DESC');
 
   return {
     createSearch(id: string, params: SearchParams) {
@@ -106,6 +135,38 @@ export function openDb(dbPath = process.env.INMUEBLES_DB_PATH ?? '.data/inmueble
     getResults(id: string): SearchOutput | undefined {
       const row = stmtGetResults.get(id) as { json: string } | undefined;
       return row ? (JSON.parse(row.json) as SearchOutput) : undefined;
+    },
+    saveTasacion(id: string, description: string, input: unknown, result: unknown) {
+      stmtSaveTasacion.run(id, description, JSON.stringify(input), JSON.stringify(result));
+    },
+    getTasacion(id: string): TasacionGuardada | undefined {
+      const row = stmtGetTasacion.get(id) as
+        | { id: string; fecha: string; description: string; input: string; result: string }
+        | undefined;
+      if (!row) return undefined;
+      return {
+        ...row,
+        input: JSON.parse(row.input) as Record<string, unknown>,
+        result: JSON.parse(row.result) as Record<string, unknown>,
+      };
+    },
+    getTasaciones(): TasacionListItem[] {
+      const rows = stmtListTasaciones.all() as { id: string; fecha: string; input: string; result: string }[];
+      return rows.map((r) => {
+        const input = JSON.parse(r.input) as { direccion?: string | null; barrio?: string | null };
+        const result = JSON.parse(r.result) as {
+          valorEstimadoUsd?: number;
+          confianza?: string;
+          ubicacion?: { direccionNormalizada?: string } | null;
+        };
+        return {
+          id: r.id,
+          fecha: r.fecha,
+          titulo: result.ubicacion?.direccionNormalizada ?? input.direccion ?? input.barrio ?? 's/d',
+          valorEstimadoUsd: result.valorEstimadoUsd ?? 0,
+          confianza: result.confianza ?? 's/d',
+        };
+      });
     },
     close() {
       db.close();
