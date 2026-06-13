@@ -5,6 +5,7 @@ export type CategoriaConstructiva = 'economica' | 'estandar' | 'buena' | 'buena_
 export interface TasacionInput {
   tipoPropiedad: 'departamento' | 'casa' | 'ph';
   barrio: string | null;
+  direccion: string | null; // calle y altura, ej "Pedro Goyena 600"
   m2Cubiertos: number | null;
   m2Semicubiertos: number | null;
   m2Balcon: number | null;
@@ -22,6 +23,21 @@ export interface TasacionInput {
   aEstrenar: boolean;
 }
 
+export interface Mejora {
+  campo: string;
+  sugerencia: string;
+  impacto: string;
+}
+
+export interface UbicacionInfo {
+  lat: number;
+  lon: number;
+  direccionNormalizada: string;
+  multiplicador: number;
+  avisos: number; // 0 = celda sin datos (multiplicador 1.0)
+  smoothed: boolean;
+}
+
 export interface BreakdownItem {
   concepto: string; // "Superficie homogeneizada", "Coef. piso (5°, c/ascensor)", ...
   valor: string; // "77.6 m²", "×1.04", "USD 3.403/m²", ...
@@ -36,4 +52,6 @@ export interface TasacionResult {
   breakdown: BreakdownItem[];
   supuestos: string[]; // supuestos/defaults aplicados, en lenguaje humano
   fuentePrecios: { fuente: string; fecha: string; barrioUsado: string; fallback: boolean };
+  ubicacion: UbicacionInfo | null;
+  mejoras: Mejora[];
 }

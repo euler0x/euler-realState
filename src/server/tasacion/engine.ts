@@ -1,4 +1,4 @@
-import type { BreakdownItem, TasacionInput, TasacionResult } from '~/types';
+import type { BreakdownItem, TasacionInput, TasacionResult, UbicacionInfo } from '~/types';
 import { matchBarrio, valorCochera } from './barrios';
 import {
   BAULERA_M2_DEFAULT,
@@ -15,6 +15,8 @@ import {
   rossHeideckeK,
 } from './constants';
 import config from './data/config-mercado.json';
+import { MICRO_PERIODO } from './geo';
+import { derivarMejoras } from './mejoras';
 
 export class TasacionInputError extends Error {}
 
@@ -26,7 +28,7 @@ function round100(v: number): number {
 }
 
 /** Motor de tasación: código puro, cero LLM. Cada paso queda trazado en el breakdown. */
-export function tasar(input: TasacionInput): TasacionResult {
+export function tasar(input: TasacionInput, geo: UbicacionInfo | null = null): TasacionResult {
   if (input.tipoPropiedad !== 'departamento') {
     throw new TasacionInputError(
       'La tasación v1 está calibrada solo para departamentos (la tabla de valores m² es de departamentos). Casas y PH tienen una dinámica de precios distinta.',
@@ -72,6 +74,31 @@ export function tasar(input: TasacionInput): TasacionResult {
     efecto: `${barrio.fuente}, ${barrio.fecha}`,
   });
 
+  // ── 2b. Micro-zona (patrón espacial histórico, ver micro-index.json) ─────
+  let usdM2Base = barrio.usdM2;
+  if (geo) {
+    if (geo.avisos > 0) {
+      usdM2Base = barrio.usdM2 * geo.multiplicador;
+      breakdown.push({
+        concepto: `Micro-zona (${geo.direccionNormalizada})`,
+        valor: `×${geo.multiplicador.toFixed(2)}`,
+        efecto: `${geo.avisos} avisos históricos (GCBA ${MICRO_PERIODO}, patrón espacial relativo)${geo.smoothed ? ' · suavizado por celdas vecinas sin cruzar barreras' : ''}`,
+      });
+      supuestos.push(
+        `el ajuste de micro-zona usa el patrón espacial de avisos GCBA ${MICRO_PERIODO} (relativo a la media del barrio), anclado a precios actuales`,
+      );
+    } else {
+      supuestos.push('micro-zona sin datos históricos suficientes en la celda — se usó la media del barrio');
+      breakdown.push({
+        concepto: `Micro-zona (${geo.direccionNormalizada})`,
+        valor: '×1.00',
+        efecto: 'sin datos históricos suficientes en la celda',
+      });
+    }
+  } else if (input.direccion) {
+    supuestos.push(`la dirección "${input.direccion}" no se pudo geocodificar — tasación a nivel barrio`);
+  }
+
   // ── 3. Coeficientes hedónicos ────────────────────────────────────────────
   if (input.piso !== null && input.piso > 0 && input.tieneAscensor === null) {
     supuestos.push('se asumió edificio con ascensor');
@@ -106,7 +133,7 @@ export function tasar(input: TasacionInput): TasacionResult {
     valor: `×${cAmen.toFixed(2)}`,
   });
 
-  const precioAjustado = barrio.usdM2 * cPiso * cUbic * cCalidad * cEscala * cAmen;
+  const precioAjustado = usdM2Base * cPiso * cUbic * cCalidad * cEscala * cAmen;
 
   // ── 4. Publicado → cierre ────────────────────────────────────────────────
   breakdown.push({
@@ -165,6 +192,9 @@ export function tasar(input: TasacionInput): TasacionResult {
   if (input.piso === null) score -= 5;
   if (!input.ubicacionPlanta) score -= 5;
   if (barrio.fallback) score -= 50;
+  if (!input.direccion) score -= 10;
+  if (input.direccion && !geo) score -= 10;
+  if (geo && geo.avisos === 0) score -= 5;
   const confianza = score >= 85 ? 'alta' : score >= 60 ? 'media' : 'baja';
 
   return {
@@ -180,5 +210,7 @@ export function tasar(input: TasacionInput): TasacionResult {
       barrioUsado: barrio.barrioUsado,
       fallback: barrio.fallback,
     },
+    ubicacion: geo,
+    mejoras: derivarMejoras(input, geo),
   };
 }

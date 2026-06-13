@@ -91,4 +91,34 @@ describe('search db', () => {
     expect(db.getPool('nope')).toEqual([]);
     expect(db.getEvaluations('nope')).toEqual([]);
   });
+
+  describe('tasaciones guardadas', () => {
+    const input = { tipoPropiedad: 'departamento', barrio: 'Palermo', direccion: 'Thames 1500' };
+    const result = { valorEstimadoUsd: 250_000, confianza: 'alta', ubicacion: { direccionNormalizada: 'THAMES 1500' } };
+
+    it('guarda y recupera una tasación completa', () => {
+      db.saveTasacion('t1', 'depto en palermo...', input, result);
+      const t = db.getTasacion('t1');
+      expect(t?.description).toBe('depto en palermo...');
+      expect(t?.input).toMatchObject({ barrio: 'Palermo' });
+      expect(t?.result).toMatchObject({ valorEstimadoUsd: 250_000 });
+    });
+
+    it('lista resumida ordenada por fecha desc', () => {
+      db.saveTasacion('t1', 'd1', input, result);
+      db.saveTasacion('t2', 'd2', { ...input, barrio: 'Flores' }, { ...result, valorEstimadoUsd: 100_000 });
+      const list = db.getTasaciones();
+      expect(list).toHaveLength(2);
+      expect(list[0]).toMatchObject({
+        id: expect.any(String),
+        valorEstimadoUsd: expect.any(Number),
+        confianza: 'alta',
+      });
+      expect(list[0].titulo.length).toBeGreaterThan(0);
+    });
+
+    it('getTasacion inexistente → undefined', () => {
+      expect(db.getTasacion('nope')).toBeUndefined();
+    });
+  });
 });
