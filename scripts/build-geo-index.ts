@@ -101,11 +101,12 @@ function parseListings(csv: string, anio: number): RawListing[] {
   let rejected = 0;
   for (const row of rows) {
     // lat/lon: 2015-2016 usan LATITUD/LONGITUD; 2012-2014 usan LAT/LON
-    const lat = Number(field(row, ['latitud', 'lat', 'y']));
-    const lon = Number(field(row, ['longitud', 'long', 'lon', 'lng', 'x']));
+    const lat = Number(field(row, ['latitud', 'lat']));
+    const lon = Number(field(row, ['longitud', 'long', 'lon', 'lng']));
     // precio usd/m2: todos los años usan U_S_M2 (salvo 2020 que no tiene lat/lon)
     const usdM2 = Number(field(row, ['u_s_m2', 'preciousdm', 'precio_usd_m2', 'usdm2', 'preciousdxm2']));
-    // m2: 2016 usa M2CUB, resto usa M2
+    // m2: todos los años tienen M2 (total); solo gatea el filtro de sanidad 20-500, no entra al índice.
+    // Ojo: field() devuelve la PRIMERA columna del header que matchee, no respeta el orden de aliases.
     const m2 = Number(field(row, ['m2', 'm2cub', 'm2_cub', 'sup_cubierta', 'm2total']));
     // barrio: 2015 usa BARRIOS (plural), resto BARRIO
     const barrio = (field(row, ['barrio', 'barrios', 'barrios_1']) ?? '').toLowerCase().trim();
