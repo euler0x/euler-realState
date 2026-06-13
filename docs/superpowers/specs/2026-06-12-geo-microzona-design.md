@@ -27,7 +27,7 @@
 ### Build-time: `scripts/build-geo-index.ts` (se corre UNA vez; el output se commitea, los CSVs crudos NO)
 
 ```
-1. Descargar CSVs GCBA "departamentos en venta" años 2014-2020 (cache local en /tmp o scripts/.cache gitignoreado)
+1. Descargar CSVs GCBA "departamentos en venta" — años 2012-2016, los únicos con CSV geo-referenciado: 2017-2019 publican solo SHP y 2020 no trae coordenadas (verificado en implementación; el plan original decía 2014-2020) — cache en scripts/.cache gitignoreado
 2. Descargar barreras: vías FFCC (GeoJSON GCBA) + autopistas (Overpass highway=motorway o `calles` filtrado)
 3. Limpieza por aviso: lat/lon dentro del bbox CABA, 200 < preciousdm < 20000, 20 ≤ m2cub ≤ 500
 4. rel = preciousdm / mediana(preciousdm del MISMO barrio en el MISMO año)
@@ -76,7 +76,7 @@ microLookup(lat, lon): {multiplicador, avisos, smoothed} | null  // lookup O(1) 
 - `TasacionInput` += `direccion: string | null` (la extracción la captura: "calle y altura, ej 'Pedro Goyena 600'"; null si no aparece).
 - El **route** orquesta: extracción → si hay `direccion`: `geocodeUSIG` → `microLookup` → arma `GeoContext | null` → `tasar(input, geo)`. El **motor sigue puro** (recibe el contexto, no hace I/O).
 - Motor: `precioBaseMicro = barrio.usdM2 × geo.multiplicador` (el multiplicador actúa sobre el precio/m², antes del resto de coeficientes). Breakdown:
-  - Con datos: `"Micro-zona (PEDRO GOYENA AV. 600): ×1.15 — 43 avisos históricos (GCBA 2014-2020, patrón espacial relativo)"` + nota si smoothed.
+  - Con datos: `"Micro-zona (PEDRO GOYENA AV. 600): ×1.15 — 43 avisos históricos (GCBA 2012-2016, patrón espacial relativo)"` + nota si smoothed.
   - Sin celda: `×1.00 — sin datos históricos suficientes en la cuadra` + supuesto.
 - **Confianza v2** (ajuste aditivo al esquema actual): sin `direccion` → −10; `direccion` que no geocodifica → −10 + supuesto; celda sin datos → −5 + supuesto. (Una descripción completa CON dirección y micro-datos = 100; la misma sin dirección = 90, sigue "alta" — gentil pero empuja a darla.)
 - `TasacionResult` += `ubicacion: { lat, lon, direccionNormalizada, multiplicador, avisos, smoothed } | null` y `mejoras: Mejora[]`.

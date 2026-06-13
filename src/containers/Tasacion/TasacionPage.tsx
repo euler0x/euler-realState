@@ -81,13 +81,17 @@ export const TasacionPage = () => {
   };
 
   const abrirGuardada = async (id: string) => {
-    const res = await fetch(`/api/tasaciones/${id}`);
-    if (!res.ok) return;
-    const t = (await res.json()) as { description: string; input: TasacionInput; result: TasacionResult };
-    setDescription(t.description);
-    setData({ input: t.input, result: t.result });
-    setGuardada(true);
-    setError(null);
+    try {
+      const res = await fetch(`/api/tasaciones/${id}`);
+      if (!res.ok) throw new Error(`no se pudo abrir la tasación guardada (HTTP ${res.status})`);
+      const t = (await res.json()) as { description: string; input: TasacionInput; result: TasacionResult };
+      setDescription(t.description);
+      setData({ input: t.input, result: t.result });
+      setGuardada(true);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'no se pudo abrir la tasación guardada');
+    }
   };
 
   const exportarPng = async () => {

@@ -42,6 +42,9 @@ export interface MicroCell {
 // El JSON importado tipa cada celda como number[]; el script de build garantiza tuplas [mult, avisos, smoothed01].
 const CELLS = index.cells as unknown as Record<string, [number, number, number]>;
 
+/** Período de los datos históricos del índice (ej "2012-2016") — para el disclaimer de staleness. */
+export const MICRO_PERIODO = index.meta.anios.split(' ')[0];
+
 /** Lookup O(1) del multiplicador de micro-zona. Null si la celda no tiene datos. */
 export function microLookup(lat: number, lon: number): MicroCell | null {
   const c = CELLS[cellKey(lat, lon)];

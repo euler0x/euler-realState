@@ -15,6 +15,7 @@ import {
   rossHeideckeK,
 } from './constants';
 import config from './data/config-mercado.json';
+import { MICRO_PERIODO } from './geo';
 import { derivarMejoras } from './mejoras';
 
 export class TasacionInputError extends Error {}
@@ -81,8 +82,11 @@ export function tasar(input: TasacionInput, geo: UbicacionInfo | null = null): T
       breakdown.push({
         concepto: `Micro-zona (${geo.direccionNormalizada})`,
         valor: `×${geo.multiplicador.toFixed(2)}`,
-        efecto: `${geo.avisos} avisos históricos (GCBA, patrón espacial relativo)${geo.smoothed ? ' · suavizado por celdas vecinas sin cruzar barreras' : ''}`,
+        efecto: `${geo.avisos} avisos históricos (GCBA ${MICRO_PERIODO}, patrón espacial relativo)${geo.smoothed ? ' · suavizado por celdas vecinas sin cruzar barreras' : ''}`,
       });
+      supuestos.push(
+        `el ajuste de micro-zona usa el patrón espacial de avisos GCBA ${MICRO_PERIODO} (relativo a la media del barrio), anclado a precios actuales`,
+      );
     } else {
       supuestos.push('micro-zona sin datos históricos suficientes en la celda — se usó la media del barrio');
       breakdown.push({
