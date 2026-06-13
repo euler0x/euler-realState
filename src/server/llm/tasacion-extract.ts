@@ -12,6 +12,7 @@ const INPUT_SCHEMA = {
   properties: {
     tipoPropiedad: { type: 'string', enum: ['departamento', 'casa', 'ph'] },
     barrio: { type: ['string', 'null'] },
+    direccion: { type: ['string', 'null'] },
     m2Cubiertos: NULLABLE_NUM,
     m2Semicubiertos: NULLABLE_NUM,
     m2Balcon: NULLABLE_NUM,
@@ -36,6 +37,7 @@ const INPUT_SCHEMA = {
   required: [
     'tipoPropiedad',
     'barrio',
+    'direccion',
     'm2Cubiertos',
     'm2Semicubiertos',
     'm2Balcon',
@@ -59,6 +61,7 @@ const EXTRACT_PROMPT = `Sos un tasador que estructura datos de inmuebles de Buen
 Guías:
 - "tipoPropiedad": departamento por default si dice "depto/departamento/ambientes en piso"; "ph" o "casa" solo si lo dice.
 - "barrio": el barrio de CABA mencionado (ej. "Palermo", "Villa Crespo").
+- "direccion": calle y altura si aparecen (ej: "Pedro Goyena 600", "Av. Rivadavia 5000"); null si no hay dirección concreta.
 - Superficies en m²: cubiertos (interior), semicubiertos (galería techada), balcón, descubiertos (patio/terraza). "75 metros" sin aclarar = m2Cubiertos. Si da total y balcón ("80 m² con 8 de balcón") → cubiertos 72, balcón 8.
 - "piso": número (PB/planta baja = 0). "tieneAscensor" solo si lo menciona.
 - "ubicacionPlanta": frente/contrafrente/lateral/interno solo si lo dice.

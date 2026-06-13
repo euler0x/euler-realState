@@ -24,6 +24,7 @@ describe('runTasacionExtract', () => {
           structured_output: {
             tipoPropiedad: 'departamento',
             barrio: 'Palermo',
+            direccion: 'Pedro Goyena 600',
             m2Cubiertos: 75,
             m2Semicubiertos: null,
             m2Balcon: 8,
@@ -45,6 +46,7 @@ describe('runTasacionExtract', () => {
     );
     const { input, tokens } = await runTasacionExtract('depto 75m2 en palermo piso 5 frente...');
     expect(input.barrio).toBe('Palermo');
+    expect(input.direccion).toBe('Pedro Goyena 600');
     expect(input.m2Cubiertos).toBe(75);
     expect(input.estadoConservacion).toBe(2);
     expect(tokens).toBe(100);
