@@ -108,12 +108,13 @@ export function rankResults(
       requirementResults.push({ requirementId: r.id, verdict: m.verdict, evidence: m.evidence });
     }
 
-    // 4. gate textual duro: cada must textual debe quedar 'met'
+    // 4. gate textual duro: excluir SOLO si el aviso contradice el must ('not_met'); si no se pudo
+    //    confirmar ('unknown', texto de tarjeta breve) NO excluye — se conserva y se marca sin confirmar.
     let excluded = false;
     for (const r of hardTextual) {
       const res = requirementResults.find((x) => x.requirementId === r.id);
-      if (res?.verdict !== 'met') {
-        addToBucket(buckets, `no confirma "${r.label}"`, g.listing.id);
+      if (res?.verdict === 'not_met') {
+        addToBucket(buckets, `contradice "${r.label}"`, g.listing.id);
         excluded = true;
         break;
       }

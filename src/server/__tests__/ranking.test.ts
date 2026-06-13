@@ -43,13 +43,28 @@ const ev = (listingId: string, replica: number, verdicts: Evaluation['verdicts']
 });
 
 describe('rankResults', () => {
-  it('excludes a listing whose hard textual must-have is not confirmed (strict)', () => {
+  it('keeps (flagged) a textual must that cannot be confirmed — solo excluye si lo contradice', () => {
     const gated: GatedListing[] = [{ listing: mk('a'), numericVerdicts: [], failReason: undefined }];
     const evals = [
-      // r2 (mascotas, must) viene 'met' pero la evidencia NO está en el texto → degrada a unknown → excluye
+      // r2 (mascotas, must) viene 'met' pero la evidencia NO está en el texto → degrada a unknown.
+      // Anti-alucinación sigue intacto (el 'met' falso no cuenta), pero unknown ya NO excluye: se marca.
       ev('a', 1, [
         { requirementId: 'r2', verdict: 'met', evidence: 'jacuzzi inexistente' },
         { requirementId: 'r3', verdict: 'met', evidence: 'luminoso' },
+        { requirementId: RED_FLAGS_ID, verdict: 'not_met', evidence: null },
+      ]),
+    ];
+    const out = rankResults(gated, evals, reqs, { replicas: 1 });
+    expect(out.survivors).toHaveLength(1);
+    expect(out.survivors[0].unconfirmedMusts).toBe(1);
+    expect(out.survivors[0].requirementResults.find((v) => v.requirementId === 'r2')?.verdict).toBe('unknown');
+  });
+
+  it('excludes a listing only when a hard textual must is CONTRADICTED (not_met)', () => {
+    const gated: GatedListing[] = [{ listing: mk('a'), numericVerdicts: [], failReason: undefined }];
+    const evals = [
+      ev('a', 1, [
+        { requirementId: 'r2', verdict: 'not_met', evidence: null }, // el aviso contradice "mascotas"
         { requirementId: RED_FLAGS_ID, verdict: 'not_met', evidence: null },
       ]),
     ];
