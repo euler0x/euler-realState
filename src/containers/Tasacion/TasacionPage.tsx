@@ -36,6 +36,7 @@ export const TasacionPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{ input: TasacionInput; result: TasacionResult } | null>(null);
   const [guardada, setGuardada] = useState(false);
+  const [guardando, setGuardando] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -61,15 +62,21 @@ export const TasacionPage = () => {
   };
 
   const guardar = async () => {
-    if (!data) return;
-    const res = await fetch('/api/tasaciones', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description: description.trim(), input: data.input, result: data.result }),
-    });
-    if (res.ok) {
+    if (!data || guardando) return;
+    setGuardando(true);
+    try {
+      const res = await fetch('/api/tasaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: description.trim(), input: data.input, result: data.result }),
+      });
+      if (!res.ok) throw new Error(`guardar falló (HTTP ${res.status})`);
       setGuardada(true);
       setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo guardar la tasación');
+    } finally {
+      setGuardando(false);
     }
   };
 
@@ -208,7 +215,7 @@ export const TasacionPage = () => {
                 size='small'
                 variant='outlined'
                 onClick={guardar}
-                disabled={guardada}
+                disabled={guardada || guardando}
                 data-testid='guardar-button'
               >
                 {guardada ? 'Guardada ✓' : 'Guardar'}

@@ -11,6 +11,7 @@ export const MapaUbicacion = ({ ubicacion }: Props) => {
 
   useEffect(() => {
     let map: import('leaflet').Map | null = null;
+    let observer: ResizeObserver | null = null;
     let cancelled = false;
     void import('leaflet').then((L) => {
       if (cancelled || !ref.current) return;
@@ -29,9 +30,19 @@ export const MapaUbicacion = ({ ubicacion }: Props) => {
         fillColor: '#d32f2f',
         fillOpacity: 0.85,
       }).addTo(map);
+      // La tab Tasar se oculta con display:none (Landing mantiene ambas montadas): si el mapa
+      // se inicializa con contenedor 0×0 queda roto. Al recuperar tamaño, recalcular y re-centrar.
+      observer = new ResizeObserver(() => {
+        if (map && ref.current && ref.current.clientWidth > 0) {
+          map.invalidateSize();
+          map.setView([ubicacion.lat, ubicacion.lon], 16);
+        }
+      });
+      observer.observe(ref.current);
     });
     return () => {
       cancelled = true;
+      observer?.disconnect();
       map?.remove();
     };
   }, [ubicacion.lat, ubicacion.lon]);
