@@ -71,6 +71,7 @@ export interface EvaluatedListing {
   niceScore: number; // 0..1
   redFlag: boolean;
   partialData: boolean; // listing.dataSource === 'card'
+  unconfirmedMusts: number; // must-haves que el aviso no confirma (dato faltante): pasó el gate pero falta verificar
 }
 
 export interface ExclusionBucket {
@@ -80,7 +81,7 @@ export interface ExclusionBucket {
 }
 
 export interface SearchOutput {
-  survivors: EvaluatedListing[]; // ordenados: niceScore desc, luego precio asc
+  survivors: EvaluatedListing[]; // ordenados: must sin confirmar asc, luego niceScore desc, luego precio asc
   exclusions: ExclusionBucket[];
   unevaluable: { listingId: string; error: string }[];
   degraded: boolean;

@@ -13,7 +13,7 @@ export const ResultsList = ({ output, criteria }: Props) => {
   return (
     <Stack spacing={1.5} width='100%' maxWidth='72rem' data-testid='results'>
       <Typography variant='h6'>
-        {output.survivors.length} avisos cumplen tus requisitos{output.degraded ? ' — ⚠ degradado' : ''}
+        {output.survivors.length} avisos pasaron tus filtros{output.degraded ? ' — ⚠ degradado' : ''}
       </Typography>
 
       {(output.exclusions.length > 0 || output.unevaluable.length > 0) && (
@@ -28,6 +28,14 @@ export const ResultsList = ({ output, criteria }: Props) => {
           <Stack spacing={1}>
             <Stack direction='row' spacing={1} alignItems='center'>
               <Chip size='small' color='success' label={`${Math.round(r.niceScore * 100)}% deseables`} />
+              {r.unconfirmedMusts > 0 && (
+                <Chip
+                  size='small'
+                  color='info'
+                  variant='outlined'
+                  label={`❓ ${r.unconfirmedMusts} must sin confirmar`}
+                />
+              )}
               {r.redFlag && <Chip size='small' color='warning' label='⚠ red flag' />}
               {r.partialData && <Chip size='small' variant='outlined' label='datos parciales' />}
               <Link href={r.listing.url} target='_blank' rel='noopener noreferrer'>

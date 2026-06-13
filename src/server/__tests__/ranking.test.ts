@@ -74,6 +74,51 @@ describe('rankResults', () => {
     expect(out.survivors[0].niceScore).toBeCloseTo(1 / 3, 3);
   });
 
+  it('keeps a survivor with a missing numeric must and flags it as unconfirmed', () => {
+    const reqExpensas: Requirement = {
+      id: 'r1',
+      label: 'expensas ≤ 800k',
+      hardness: 'must',
+      kind: 'numeric',
+      predicate: { field: 'expensas', op: '<=', value: 800_000 },
+    };
+    // el gate ya resolvió dato faltante → unknown sin excluir (failReason undefined)
+    const gated: GatedListing[] = [
+      {
+        listing: mk('a'),
+        numericVerdicts: [{ requirementId: 'r1', verdict: 'unknown', evidence: null }],
+        failReason: undefined,
+      },
+    ];
+    const out = rankResults(gated, [], [reqExpensas], { replicas: 1 });
+    expect(out.survivors).toHaveLength(1);
+    expect(out.survivors[0].unconfirmedMusts).toBe(1);
+  });
+
+  it('ranks fully-confirmed survivors above ones with unconfirmed musts (even if pricier)', () => {
+    const reqM2: Requirement = {
+      id: 'r1',
+      label: 'm² ≥ 100',
+      hardness: 'must',
+      kind: 'numeric',
+      predicate: { field: 'm2', op: '>=', value: 100 },
+    };
+    const gated: GatedListing[] = [
+      {
+        listing: mk('missing', { price: { amount: 100_000, currency: 'USD' } }),
+        numericVerdicts: [{ requirementId: 'r1', verdict: 'unknown', evidence: null }],
+        failReason: undefined,
+      },
+      {
+        listing: mk('confirmed', { price: { amount: 200_000, currency: 'USD' } }),
+        numericVerdicts: [{ requirementId: 'r1', verdict: 'met', evidence: '120' }],
+        failReason: undefined,
+      },
+    ];
+    const out = rankResults(gated, [], [reqM2], { replicas: 1 });
+    expect(out.survivors.map((s) => s.listing.id)).toEqual(['confirmed', 'missing']);
+  });
+
   it('resolves replica majority per requirement (2 of 3 met with evidence → met)', () => {
     const gated: GatedListing[] = [{ listing: mk('a'), numericVerdicts: [], failReason: undefined }];
     const evals = [
