@@ -104,6 +104,27 @@ export async function runSearch(id: string, params: SearchParams, deps: SearchDe
     const survivorsOfGate = gated.filter((g) => !g.failReason);
     emit({ type: 'gate', survived: survivorsOfGate.length, total: pool.length });
 
+    // Enriquecer detalle SOLO de los sobrevivientes del gate (no del pool paginado entero), ruteando
+    // cada aviso a su portal de origen. Mutar g.listing también actualiza `gated` (mismas refs).
+    const adaptersByName = new Map(deps.adapters.map((a) => [a.name, a]));
+    const survivorsByPortal = new Map<string, GatedListing[]>();
+    for (const g of survivorsOfGate) {
+      const arr = survivorsByPortal.get(g.listing.portal) ?? [];
+      arr.push(g);
+      survivorsByPortal.set(g.listing.portal, arr);
+    }
+    for (const [portal, group] of survivorsByPortal) {
+      const adapter = adaptersByName.get(portal);
+      if (!adapter?.enrich) continue;
+      try {
+        const enriched = await adapter.enrich(group.map((g) => g.listing));
+        const byId = new Map(enriched.map((l) => [l.id, l]));
+        for (const g of group) g.listing = byId.get(g.listing.id) ?? g.listing;
+      } catch {
+        // enriquecido best-effort: si falla, seguimos con datos de tarjeta
+      }
+    }
+
     db.setStatus(id, 'textual_eval');
     emit({ type: 'phase', phase: 'textual_eval' });
     const hasTextual = criteria.requirements.some((r) => r.kind === 'textual');
