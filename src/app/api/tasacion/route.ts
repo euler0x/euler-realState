@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { runTasacionExtract } from '~/server/llm/tasacion-extract';
 import { TasacionInputError, tasar } from '~/server/tasacion/engine';
+import { geocodeUSIG, microLookup } from '~/server/tasacion/geo';
+import type { UbicacionInfo } from '~/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,7 +21,21 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const result = tasar(input);
+    // Geocodificación opcional: si falla, geo queda null y el motor degrada a nivel barrio.
+    let geo: UbicacionInfo | null = null;
+    if (input.direccion) {
+      const point = await geocodeUSIG(input.direccion);
+      if (point) {
+        const cell = microLookup(point.lat, point.lon);
+        geo = {
+          ...point,
+          multiplicador: cell?.multiplicador ?? 1,
+          avisos: cell?.avisos ?? 0,
+          smoothed: cell?.smoothed ?? false,
+        };
+      }
+    }
+    const result = tasar(input, geo);
     return NextResponse.json({ input, result });
   } catch (err) {
     if (err instanceof TasacionInputError) {
