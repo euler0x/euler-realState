@@ -207,16 +207,29 @@ async function fetchFFCCFallback(): Promise<Polyline[]> {
 
 async function fetchAutopistas(): Promise<Polyline[]> {
   // OSM Overpass: highway=motorway dentro del bbox CABA. Si falla → warning y seguimos solo con FFCC.
+  // Overpass devuelve 406 sin User-Agent identificable — el header es obligatorio.
   const q = `[out:json][timeout:60];way["highway"="motorway"](${BBOX.latMin},${BBOX.lonMin},${BBOX.latMax},${BBOX.lonMax});out geom;`;
   try {
-    const res = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: `data=${encodeURIComponent(q)}`,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      signal: AbortSignal.timeout(90_000),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as { elements?: { geometry?: { lat: number; lon: number }[] }[] };
+    const cached = path.join(CACHE, 'autopistas-overpass.json');
+    let text: string;
+    if (fs.existsSync(cached)) {
+      text = fs.readFileSync(cached, 'utf-8');
+    } else {
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: `data=${encodeURIComponent(q)}`,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'euler-inmuebles-build/1.0 (uso personal, una corrida)',
+        },
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      text = await res.text();
+      fs.mkdirSync(CACHE, { recursive: true });
+      fs.writeFileSync(cached, text);
+    }
+    const data = JSON.parse(text) as { elements?: { geometry?: { lat: number; lon: number }[] }[] };
     const lines: Polyline[] = (data.elements ?? [])
       .map((e) => (e.geometry ?? []).map((p) => ({ lat: p.lat, lon: p.lon })))
       .filter((l) => l.length >= 2);
