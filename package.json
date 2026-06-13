@@ -43,6 +43,8 @@
     "@next/eslint-plugin-next": "15.3.3",
     "better-sqlite3": "^12.10.0",
     "cheerio": "^1.2.0",
+    "html-to-image": "^1.11.13",
+    "leaflet": "^1.9.4",
     "next": "15.3.3",
     "react": "19.1.0",
     "react-dom": "19.1.0"
@@ -63,6 +65,7 @@
     "@synthetixio/synpress": "4.1.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "29.5.12",
+    "@types/leaflet": "^1.9.21",
     "@types/lodash.merge": "4.6.7",
     "@types/node": "22.7.4",
     "@types/react": "18.3.10",
