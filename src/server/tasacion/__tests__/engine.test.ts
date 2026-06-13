@@ -1,11 +1,12 @@
 /** @jest-environment node */
 import { expect } from '@jest/globals';
-import type { TasacionInput } from '~/types';
+import type { TasacionInput, UbicacionInfo } from '~/types';
 import { tasar, TasacionInputError } from '../engine';
 
 const base: TasacionInput = {
   tipoPropiedad: 'departamento',
   barrio: 'Palermo',
+  direccion: null,
   m2Cubiertos: 75,
   m2Semicubiertos: null,
   m2Balcon: 8,
@@ -84,12 +85,53 @@ describe('tasar — cálculo', () => {
   it('datos faltantes aplican defaults documentados como supuestos y bajan confianza', () => {
     const r = tasar({ ...base, antiguedadAnios: null, estadoConservacion: null, piso: null, ubicacionPlanta: null });
     expect(r.supuestos.length).toBeGreaterThanOrEqual(3);
-    expect(r.confianza).toBe('media'); // 100 −10 −10 −5 −5 = 70
+    expect(r.confianza).toBe('media'); // 100 −10 −10 −5 −5 −10(sin dirección) = 60
   });
 
   it('clampea valores absurdos', () => {
     const r = tasar({ ...base, antiguedadAnios: 300 });
     expect(r.valorEstimadoUsd).toBeGreaterThan(0); // 300 → clamp 120 años
     expect(r.supuestos.some((s) => s.includes('120'))).toBe(true);
+  });
+
+  it('aplica el multiplicador de micro-zona al precio base y lo muestra en el breakdown', () => {
+    const geo: UbicacionInfo = {
+      lat: -34.62,
+      lon: -58.43,
+      direccionNormalizada: 'PEDRO GOYENA AV. 600',
+      multiplicador: 1.15,
+      avisos: 43,
+      smoothed: false,
+    };
+    const conGeo = tasar({ ...base, direccion: 'Pedro Goyena 600' }, geo);
+    const sinGeo = tasar(base);
+    expect(conGeo.valorEstimadoUsd).toBeGreaterThan(sinGeo.valorEstimadoUsd * 1.1);
+    expect(conGeo.breakdown.some((b) => b.concepto.includes('Micro-zona'))).toBe(true);
+    expect(conGeo.ubicacion).toEqual(geo);
+    expect(conGeo.mejoras.some((x) => x.campo === 'direccion')).toBe(false);
+  });
+
+  it('celda sin datos → multiplicador 1.0, supuesto y −5 de confianza', () => {
+    const geo: UbicacionInfo = {
+      lat: -34.62,
+      lon: -58.43,
+      direccionNormalizada: 'X 1',
+      multiplicador: 1,
+      avisos: 0,
+      smoothed: false,
+    };
+    const r = tasar({ ...base, direccion: 'X 1' }, geo);
+    expect(r.supuestos.some((s) => s.includes('sin datos'))).toBe(true);
+    expect(r.confianza).toBe('alta'); // 100 − 5 = 95
+  });
+
+  it('confianza v2: sin dirección −10; dirección que no geocodifica −10', () => {
+    // base no tiene dirección → 100 − 10 = 90 (alta)
+    expect(tasar(base).confianza).toBe('alta');
+    // con dirección pero geo null (no geocodificó) → 100 − 10 = 90 (alta) + supuesto
+    const r = tasar({ ...base, direccion: 'Calle Falsa 123' }, null);
+    expect(r.confianza).toBe('alta');
+    expect(r.supuestos.some((s) => s.includes('geocodificar'))).toBe(true);
+    expect(r.ubicacion).toBeNull();
   });
 });
