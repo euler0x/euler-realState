@@ -33,8 +33,10 @@ export interface NumericGateResult {
 }
 
 /**
- * Evalúa los requisitos NUMÉRICOS de un aviso. Los must-have numéricos actúan como gate duro
- * (estricto: dato faltante → unknown → no pasa). Los nice-to-have numéricos se evalúan como
+ * Evalúa los requisitos NUMÉRICOS de un aviso. Un must-have numérico actúa como gate duro
+ * SOLO cuando el aviso informa el dato y lo viola (verdict 'not_met'). Si el dato falta
+ * ('unknown', ej. expensas que el aviso no publica), NO excluye: se conserva con verdict
+ * 'unknown' para que el ranking lo flaguee. Los nice-to-have numéricos se evalúan como
  * verdicts (para el ranking) pero nunca bloquean. Los requisitos textuales se ignoran acá.
  */
 export function applyNumericGates(listing: NormalizedListing, requirements: Requirement[]): NumericGateResult {
@@ -54,12 +56,10 @@ export function applyNumericGates(listing: NormalizedListing, requirements: Requ
     }
     verdicts.push({ requirementId: req.id, verdict, evidence: actual === undefined ? null : `${actual}` });
 
-    if (req.hardness === 'must' && verdict !== 'met' && passed) {
+    // Excluir solo si el aviso TIENE el dato y lo viola; dato faltante no bloquea (se marca unknown).
+    if (req.hardness === 'must' && verdict === 'not_met' && passed) {
       passed = false;
-      failReason =
-        verdict === 'unknown'
-          ? `${FIELD_LABEL[field]} no informado`
-          : `${FIELD_LABEL[field]} ${actual} no cumple ${op} ${value}`;
+      failReason = `${FIELD_LABEL[field]} ${actual} no cumple ${op} ${value}`;
     }
   }
 

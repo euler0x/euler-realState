@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { argenpropAdapter } from '~/server/adapters/argenprop';
+import { mercadolibreAdapter } from '~/server/adapters/mercadolibre';
+import { meliHasCredentials } from '~/server/adapters/mercadolibre/token';
 import { getDb } from '~/server/db';
 import { emitSearchEvent } from '~/server/events';
 import { runEvaluator } from '~/server/llm/evaluate';
 import { runIntake } from '~/server/llm/intake';
 import { runSearch } from '~/server/search';
 import type { SearchCriteria, SearchParams } from '~/types';
+
+function buildAdapters() {
+  return meliHasCredentials() ? [argenpropAdapter, mercadolibreAdapter] : [argenpropAdapter];
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,7 +40,7 @@ export async function POST(req: Request) {
   db.createSearch(id, params);
   void runSearch(id, params, {
     db,
-    adapters: [argenpropAdapter],
+    adapters: buildAdapters(),
     intake: runIntake,
     evaluate: runEvaluator,
     emit: (e) => emitSearchEvent(id, e),

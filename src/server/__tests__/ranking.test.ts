@@ -43,13 +43,28 @@ const ev = (listingId: string, replica: number, verdicts: Evaluation['verdicts']
 });
 
 describe('rankResults', () => {
-  it('excludes a listing whose hard textual must-have is not confirmed (strict)', () => {
+  it('keeps (flagged) a textual must that cannot be confirmed — solo excluye si lo contradice', () => {
     const gated: GatedListing[] = [{ listing: mk('a'), numericVerdicts: [], failReason: undefined }];
     const evals = [
-      // r2 (mascotas, must) viene 'met' pero la evidencia NO está en el texto → degrada a unknown → excluye
+      // r2 (mascotas, must) viene 'met' pero la evidencia NO está en el texto → degrada a unknown.
+      // Anti-alucinación sigue intacto (el 'met' falso no cuenta), pero unknown ya NO excluye: se marca.
       ev('a', 1, [
         { requirementId: 'r2', verdict: 'met', evidence: 'jacuzzi inexistente' },
         { requirementId: 'r3', verdict: 'met', evidence: 'luminoso' },
+        { requirementId: RED_FLAGS_ID, verdict: 'not_met', evidence: null },
+      ]),
+    ];
+    const out = rankResults(gated, evals, reqs, { replicas: 1 });
+    expect(out.survivors).toHaveLength(1);
+    expect(out.survivors[0].unconfirmedMusts).toBe(1);
+    expect(out.survivors[0].requirementResults.find((v) => v.requirementId === 'r2')?.verdict).toBe('unknown');
+  });
+
+  it('excludes a listing only when a hard textual must is CONTRADICTED (not_met)', () => {
+    const gated: GatedListing[] = [{ listing: mk('a'), numericVerdicts: [], failReason: undefined }];
+    const evals = [
+      ev('a', 1, [
+        { requirementId: 'r2', verdict: 'not_met', evidence: null }, // el aviso contradice "mascotas"
         { requirementId: RED_FLAGS_ID, verdict: 'not_met', evidence: null },
       ]),
     ];
@@ -72,6 +87,51 @@ describe('rankResults', () => {
     expect(out.survivors).toHaveLength(1);
     // niceScore = peso cumplido (1) / peso total nice (1+2=3) = 0.333...
     expect(out.survivors[0].niceScore).toBeCloseTo(1 / 3, 3);
+  });
+
+  it('keeps a survivor with a missing numeric must and flags it as unconfirmed', () => {
+    const reqExpensas: Requirement = {
+      id: 'r1',
+      label: 'expensas ≤ 800k',
+      hardness: 'must',
+      kind: 'numeric',
+      predicate: { field: 'expensas', op: '<=', value: 800_000 },
+    };
+    // el gate ya resolvió dato faltante → unknown sin excluir (failReason undefined)
+    const gated: GatedListing[] = [
+      {
+        listing: mk('a'),
+        numericVerdicts: [{ requirementId: 'r1', verdict: 'unknown', evidence: null }],
+        failReason: undefined,
+      },
+    ];
+    const out = rankResults(gated, [], [reqExpensas], { replicas: 1 });
+    expect(out.survivors).toHaveLength(1);
+    expect(out.survivors[0].unconfirmedMusts).toBe(1);
+  });
+
+  it('ranks fully-confirmed survivors above ones with unconfirmed musts (even if pricier)', () => {
+    const reqM2: Requirement = {
+      id: 'r1',
+      label: 'm² ≥ 100',
+      hardness: 'must',
+      kind: 'numeric',
+      predicate: { field: 'm2', op: '>=', value: 100 },
+    };
+    const gated: GatedListing[] = [
+      {
+        listing: mk('missing', { price: { amount: 100_000, currency: 'USD' } }),
+        numericVerdicts: [{ requirementId: 'r1', verdict: 'unknown', evidence: null }],
+        failReason: undefined,
+      },
+      {
+        listing: mk('confirmed', { price: { amount: 200_000, currency: 'USD' } }),
+        numericVerdicts: [{ requirementId: 'r1', verdict: 'met', evidence: '120' }],
+        failReason: undefined,
+      },
+    ];
+    const out = rankResults(gated, [], [reqM2], { replicas: 1 });
+    expect(out.survivors.map((s) => s.listing.id)).toEqual(['confirmed', 'missing']);
   });
 
   it('resolves replica majority per requirement (2 of 3 met with evidence → met)', () => {

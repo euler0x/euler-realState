@@ -67,4 +67,44 @@ describe('normalizeListing', () => {
     expect(l?.ambientes).toBe(1);
     expect(l?.m2).toBe(30);
   });
+
+  // Argenprop pone el conteo de ambientes en el TÍTULO; las features de la tarjeta suelen
+  // traer solo "X dorm." Sin estos fallbacks, ambientes queda undefined y el gate estricto
+  // `ambientes == N` excluye el pool entero (bug del cero-resultados de Pedro Goyena).
+  it('extrae ambientes del título cuando las features solo traen dormitorios', () => {
+    const l = normalizeListing(
+      { ...raw, title: 'DEPARTAMENTO SEMIPISO 4 AMBIENTES AL FRENTE', featuresText: ['3 dorm.', '2 baños'] },
+      'Caballito',
+    );
+    expect(l?.ambientes).toBe(4);
+  });
+
+  it('deriva ambientes de los dormitorios (+1 living) cuando ni features ni título lo dicen', () => {
+    const l = normalizeListing(
+      { ...raw, title: 'IMPECABLE DÚPLEX ESTILO CASA', featuresText: ['100 m² cubie.', '2 dorm.', '11 años'] },
+      'Caballito',
+    );
+    expect(l?.ambientes).toBe(3); // 2 dormitorios + living
+  });
+
+  it('monoambiente en el título mapea a 1', () => {
+    const l = normalizeListing(
+      { ...raw, title: 'MONOAMBIENTE AMPLIO EN CABALLITO', featuresText: ['34 m² cubie.', '1 baño'] },
+      'Caballito',
+    );
+    expect(l?.ambientes).toBe(1);
+  });
+
+  it('los ambientes de las features tienen prioridad sobre el título', () => {
+    const l = normalizeListing({ ...raw, title: 'Depto 5 ambientes', featuresText: ['3 ambientes'] }, 'Caballito');
+    expect(l?.ambientes).toBe(3);
+  });
+
+  it('extrae m2 del título cuando las features no lo traen', () => {
+    const l = normalizeListing(
+      { ...raw, title: 'Hermoso piso 3 ambientes de 103m2 al frente', featuresText: ['2 dorm.', '60 años'] },
+      'Caballito',
+    );
+    expect(l?.m2).toBe(103);
+  });
 });

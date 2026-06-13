@@ -78,6 +78,7 @@ export function rankResults(
 ): SearchOutput {
   const textualReqs = requirements.filter((r) => r.kind === 'textual');
   const hardTextual = textualReqs.filter((r) => r.hardness === 'must');
+  const mustReqs = requirements.filter((r) => r.hardness === 'must');
   const niceReqs = requirements.filter((r) => r.hardness === 'nice');
   const niceWeightTotal = niceReqs.reduce((s, r) => s + (r.weight ?? 1), 0);
 
@@ -107,12 +108,13 @@ export function rankResults(
       requirementResults.push({ requirementId: r.id, verdict: m.verdict, evidence: m.evidence });
     }
 
-    // 4. gate textual duro: cada must textual debe quedar 'met'
+    // 4. gate textual duro: excluir SOLO si el aviso contradice el must ('not_met'); si no se pudo
+    //    confirmar ('unknown', texto de tarjeta breve) NO excluye — se conserva y se marca sin confirmar.
     let excluded = false;
     for (const r of hardTextual) {
       const res = requirementResults.find((x) => x.requirementId === r.id);
-      if (res?.verdict !== 'met') {
-        addToBucket(buckets, `no confirma "${r.label}"`, g.listing.id);
+      if (res?.verdict === 'not_met') {
+        addToBucket(buckets, `contradice "${r.label}"`, g.listing.id);
         excluded = true;
         break;
       }
@@ -131,6 +133,12 @@ export function rankResults(
     }
     const niceScore = niceWeightTotal === 0 ? 1 : niceMetWeight / niceWeightTotal;
 
+    // must-haves que el aviso NO confirma (dato faltante → 'unknown'): pasó el gate pero falta verificar.
+    // Los must textuales no confirmados ya se excluyeron arriba, así que esto cuenta sobre todo numéricos sin dato.
+    const unconfirmedMusts = mustReqs.filter(
+      (r) => requirementResults.find((x) => x.requirementId === r.id)?.verdict !== 'met',
+    ).length;
+
     survivors.push({
       listing: g.listing,
       passed: true,
@@ -138,10 +146,17 @@ export function rankResults(
       niceScore,
       redFlag,
       partialData: g.listing.dataSource === 'card',
+      unconfirmedMusts,
     });
   }
 
-  survivors.sort((a, b) => b.niceScore - a.niceScore || a.listing.price.amount - b.listing.price.amount);
+  // Primero los que confirman TODOS sus must (menos incógnitas), luego más deseables, luego más barato.
+  survivors.sort(
+    (a, b) =>
+      a.unconfirmedMusts - b.unconfirmedMusts ||
+      b.niceScore - a.niceScore ||
+      a.listing.price.amount - b.listing.price.amount,
+  );
 
   const degraded = hardTextual.length > 0 && survivors.length === 0 && unevaluable.length > 0;
   return { survivors, exclusions: [...buckets.values()], unevaluable, degraded };

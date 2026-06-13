@@ -52,10 +52,9 @@ export const argenpropAdapter: PortalAdapter = {
     const byId = new Map<string, NormalizedListing>();
     let blocked = false;
     let errorCount = 0;
-    const urls = buildSearchUrls(criteria);
+    const targets = buildSearchUrls(criteria);
 
-    for (const [i, url] of urls.entries()) {
-      const barrio = criteria.barrios[i] ?? 'Capital Federal';
+    for (const { url, barrio } of targets) {
       try {
         const page = await fetchPage(url);
         if (!page.html) {
@@ -72,15 +71,17 @@ export const argenpropAdapter: PortalAdapter = {
           if (listing) byId.set(listing.id, listing);
         }
       } catch {
-        // network error / timeout on one barrio: keep going with the rest
+        // network error / timeout on one target: keep going with the rest
         errorCount++;
       }
     }
 
-    if (byId.size === 0 && !blocked && errorCount > 0 && errorCount === urls.length)
-      return { status: 'error', listings: [], detail: 'all barrio fetches failed' };
+    if (byId.size === 0 && !blocked && errorCount > 0 && errorCount === targets.length)
+      return { status: 'error', listings: [], detail: 'all page fetches failed' };
     if (byId.size === 0 && blocked) return { status: 'blocked', listings: [], detail: 'challenge o status de bloqueo' };
-    const enriched = await enrichWithDetail([...byId.values()]);
-    return { status: 'ok', listings: enriched };
+    // Devuelve nivel-tarjeta; el detalle (descripción larga + amenities) se enriquece después del
+    // gate numérico vía enrich(), para no disparar cientos de fetches sobre el pool paginado entero.
+    return { status: 'ok', listings: [...byId.values()] };
   },
+  enrich: enrichWithDetail,
 };

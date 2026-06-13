@@ -52,10 +52,12 @@ describe('applyNumericGates', () => {
     expect(r.verdicts[0].verdict).toBe('not_met');
   });
 
-  it('fails strict when the field is missing (no informado)', () => {
+  it('does NOT exclude when a must numeric field is missing — keeps it and flags unknown', () => {
+    // Política: excluir solo si el dato está y se viola. Dato faltante (ej. expensas que el aviso
+    // no publica) no debe excluir: se conserva y se marca 'unknown' para que el ranking lo flaguee.
     const r = applyNumericGates(listing({ m2: undefined }), [m2min]);
-    expect(r.passed).toBe(false);
-    expect(r.failReason).toMatch(/no informado/i);
+    expect(r.passed).toBe(true);
+    expect(r.failReason).toBeUndefined();
     expect(r.verdicts[0].verdict).toBe('unknown');
   });
 

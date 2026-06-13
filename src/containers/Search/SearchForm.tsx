@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import { Button, Chip, IconButton, MenuItem, Select, Stack, Tooltip, Typography } from '@mui/material';
+import { Button, Chip, IconButton, MenuItem, Select, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import type { Requirement, SearchCriteria, SearchParams } from '~/types';
 
 const DEPTHS = [
@@ -60,6 +60,8 @@ export const SearchForm = ({ disabled, onSubmit }: Props) => {
         : c,
     );
 
+  const patchCriteria = (patch: Partial<SearchCriteria>) => setCriteria((c) => (c ? { ...c, ...patch } : c));
+
   return (
     <Stack spacing={2} width='100%' maxWidth='72rem'>
       <textarea
@@ -89,8 +91,54 @@ export const SearchForm = ({ disabled, onSubmit }: Props) => {
       {criteria && (
         <Stack spacing={1.5}>
           <Typography variant='subtitle2'>
-            Tu búsqueda, interpretada — clickeá un requisito para cambiar must↔nice:
+            Tu búsqueda, interpretada — revisá operación/zona y clickeá un requisito para cambiar must↔nice:
           </Typography>
+          <Stack direction='row' spacing={1} flexWrap='wrap' useFlexGap alignItems='center'>
+            <Select
+              value={criteria.operation}
+              onChange={(e) => patchCriteria({ operation: e.target.value as SearchCriteria['operation'] })}
+              disabled={disabled}
+              size='small'
+              data-testid='operation-select'
+            >
+              <MenuItem value='venta'>Venta</MenuItem>
+              <MenuItem value='alquiler'>Alquiler</MenuItem>
+            </Select>
+            <Select
+              value={criteria.propertyType}
+              onChange={(e) => patchCriteria({ propertyType: e.target.value as SearchCriteria['propertyType'] })}
+              disabled={disabled}
+              size='small'
+            >
+              <MenuItem value='departamento'>Departamento</MenuItem>
+              <MenuItem value='casa'>Casa</MenuItem>
+              <MenuItem value='ph'>PH</MenuItem>
+            </Select>
+            <Select
+              value={criteria.currency}
+              onChange={(e) => patchCriteria({ currency: e.target.value as SearchCriteria['currency'] })}
+              disabled={disabled}
+              size='small'
+            >
+              <MenuItem value='USD'>USD</MenuItem>
+              <MenuItem value='ARS'>ARS</MenuItem>
+            </Select>
+            <TextField
+              size='small'
+              label='Barrios (coma)'
+              value={criteria.barrios.join(', ')}
+              onChange={(e) =>
+                patchCriteria({
+                  barrios: e.target.value
+                    .split(',')
+                    .map((b) => b.trim())
+                    .filter(Boolean),
+                })
+              }
+              disabled={disabled}
+              sx={{ flex: 1, minWidth: '12rem' }}
+            />
+          </Stack>
           <Stack direction='row' spacing={0.5} flexWrap='wrap' useFlexGap>
             {criteria.requirements.map((r: Requirement) => (
               <Tooltip key={r.id} title={r.hardness === 'must' ? 'Innegociable (filtra)' : 'Deseable (rankea)'}>
